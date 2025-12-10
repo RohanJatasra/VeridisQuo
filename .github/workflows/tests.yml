@@ -46,16 +46,3 @@ jobs:
         # Désactiver CUDA pour les tests CI (utiliser CPU seulement)
         CUDA_VISIBLE_DEVICES: ""
 
-    - name: Run tests with coverage
-      run: |
-        poetry run pytest tests/ --cov=deepfake-detector --cov-report=xml --cov-report=term-missing
-      env:
-        CUDA_VISIBLE_DEVICES: ""
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
