@@ -1,0 +1,23 @@
+[project]
+name = "deepfake-detector"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Clement Barriere",email = "cl@mettonadressezebi.com"},
+    {name = "Theo Castillo",email = "theocastillo@yahoo.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.14"
+numpy = ">=2.3.2,<3.0.0"
+torch = "^2.8.0"
+
+
+[tool.poetry]
+packages = [{include = "deepfake_detector", from = "src"}]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
