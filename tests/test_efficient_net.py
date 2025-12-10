@@ -26,3 +26,24 @@ class TestEfficientNetFeatureExtractor:
         
         assert features.shape == (4, 1792, 7, 7), f"Expected features shape (4, 1792, 7, 7), got {features.shape}"
         assert pooled_features.shape == (4, 1792, 1, 1), f"Expected pooled_features shape (4, 1792, 1, 1), got {pooled_features.shape}"
+        
+    def test_save_weights(self, tmp_path):
+        model = EfficientNetFeatureExtractor(pretrained=False)
+        
+        save_path = tmp_path / "efficientnet_weights.pth"
+        model.save_weights(str(save_path))
+        
+        assert save_path.exists(), "Weights file was not saved properly."
+        
+    def test_load_weights(self, tmp_path):
+        model = EfficientNetFeatureExtractor(pretrained=False)
+        
+        save_path = tmp_path / "efficientnet_weights.pth"
+        model.save_weights(str(save_path))
+        
+        # Create a new model instance and load weights
+        new_model = EfficientNetFeatureExtractor(pretrained=False)
+        new_model.load_weights(str(save_path))
+        
+        for param1, param2 in zip(model.backbone.parameters(), new_model.backbone.parameters()):
+            assert torch.equal(param1, param2), "Weights were not loaded properly."
