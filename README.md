@@ -25,3 +25,4 @@ poetry run python ./deepfake-detector/main.py
 ```bash
 ./scripts/run_tests.sh
 ```
+.
