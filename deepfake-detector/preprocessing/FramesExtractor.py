@@ -164,7 +164,18 @@ class FramesExtractor:
         Parameters:
             frame (np.ndarray): frame to save (numpy array)
             output_path (str): path where to save the frame
+        Raises:
+            ValueError: if parameters are invalid
+            RuntimeError: if saving fails
         """
+        try:
+            assert frame is not None and frame.size > 0, "Invalid frame to save"
+            assert Path.exists(Path(output_path).parent), "Output directory does not exist"
+        
+        except AssertionError as e:
+            self.logger.error(f"- save_frame - {e}")
+            raise ValueError(f"Invalid parameters for save_frame: {e}")
+        
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 

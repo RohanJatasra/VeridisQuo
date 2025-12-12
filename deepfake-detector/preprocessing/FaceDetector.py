@@ -148,4 +148,4 @@ class FaceDetector:
             ValueError: if provided image is invalid
         """
         detections = self.detect_faces(image, return_landmarks=return_landmarks)
-        return None if not detections else detections[0]  #should have previously been sorted by confidence
+        return None if not detections else detections[0] #should have previously been sorted by confidence

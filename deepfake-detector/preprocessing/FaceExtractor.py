@@ -20,9 +20,9 @@ class FaceExtractor:
         Parameters:
             target_size (Tuple[int, int]): target size for face images as (width, height)
             normalization (str): normalization method
-                - "zero_one": scale pixels to [0, 1]
-                - "minus_one_one": scale pixels to [-1, 1]
-                - None: no normalization
+            - "zero_one": scale pixels to [0, 1]
+            - "minus_one_one": scale pixels to [-1, 1]
+            - None: no normalization
             padding (float): percentage of padding around bbox
         Raises:
             ValueError: if parameters are invalid
@@ -93,7 +93,7 @@ class FaceExtractor:
             case _:
                 return image
 
-    def denormalize(self, image: np.ndarray) -> np.ndarray:
+    def _denormalize(self, image: np.ndarray) -> np.ndarray:
         """Reverse normalization to get original pixel values
         Parameters:
             image: Normalized image
@@ -173,35 +173,39 @@ class FaceExtractor:
         
         return image[y:y2, x:x2]
 
-    def save_face(
-        self,
+    def save(self,
         face_image: np.ndarray,
         output_path: str,
-        denormalize_first: bool = True
+        denormalize: bool = True
     ) -> None:
         """Save preprocessed face to disk as PNG.
         Parameters:
             face_image (np.ndarray): face image to save
             output_path (str): output file path
             denormalize_first (bool): whether to denormalize before saving
+        Raises:
+            ValueError: if parameters are invalid
         """
+        try:
+            assert face_image is not None and face_image.size > 0, "Invalid face image to save"
+            assert Path.exists(Path(output_path).parent), "Output directory does not exist"
+
+        except AssertionError as e:
+            self.logger.error(f"- save - {e}")
+            raise ValueError(f"Invalid parameters: {e}")
+            
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Denormalize if needed
-        if denormalize_first and self.normalization != "none":
-            save_image = self.denormalize(face_image)
-        else:
-            save_image = face_image
+        save_image = self._denormalize(face_image) if denormalize else face_image
 
-        # Convert BGR to RGB for PIL
+        #Convert BGR to RGB for PIL
         if len(save_image.shape) == 3 and save_image.shape[2] == 3:
             save_image_rgb = cv2.cvtColor(save_image, cv2.COLOR_BGR2RGB)
         else:
             save_image_rgb = save_image
 
-        # Save using PIL for better PNG compression
         pil_image = Image.fromarray(save_image_rgb)
-        pil_image.save(output_path, "PNG", optimize=True)
+        pil_image.save(output_path, "JPEG", optimize=True)
 
-        self.logger.debug(f"Saved face to {output_path}")
+        self.logger.info(f"- save - saved face to {output_path}")
