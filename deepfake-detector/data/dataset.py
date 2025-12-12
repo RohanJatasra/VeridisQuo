@@ -1,10 +1,7 @@
 import os
 import csv
 from dataclasses import dataclass
-
-
-DATA_FOLDER = "/data/FaceForensics++_C23/"
-CSV_FOLDER = os.path.join(DATA_FOLDER, "csv")
+from config import CSV_FOLDER
 
 
 @dataclass
@@ -18,8 +15,6 @@ class CSVFile:
     File_Size_MB : float
     
     
-
-
 class CustomDataset:
     def __init__(self):
         pass
