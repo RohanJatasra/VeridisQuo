@@ -1,9 +1,9 @@
 [project]
-name = "deepfake-detector"
+name = "VeridisQuo"
 version = "0.1.0"
-description = ""
+description = "Neural network specialised in deepfake detection, notably using EfficientNet and Gradcam."
 authors = [
-    {name = "Clement Barriere",email = "cl@mettonadressezebi.com"},
+    {name = "Clement Barriere",email = "clementbarriere64@gmail.com"},
     {name = "Theo Castillo",email = "theocastillo@yahoo.com"}
 ]
 readme = "README.md"
@@ -14,14 +14,20 @@ python = ">=3.12,<3.14"
 numpy = ">=2.3.2,<3.0.0"
 torch = "^2.8.0"
 torchvision = "^0.24.1"
+Pillow = "^10.0.0"
+mtcnn = "^0.1.1"
+opencv-python = "^4.8.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
 pytest-cov = "^6.0.0"
 pytest-xdist = "^3.0.0"
 
-
 [tool.poetry]
+name = "VeridisQuo"
+version = "0.1.0"
+description = "Neural network specialised in deepfake detection, notably using EfficientNet and Gradcam."
+authors = ["Clement Barriere", "Theo Castillo"]
 packages = [{include = "deepfake-detector"}]
 
 [build-system]
