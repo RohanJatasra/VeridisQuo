@@ -25,4 +25,5 @@ poetry run python ./deepfake-detector/main.py
 ```bash
 ./scripts/run_tests.sh
 ```
-.
+
+https://www.kaggle.com/datasets/xdxd003/ff-c23
