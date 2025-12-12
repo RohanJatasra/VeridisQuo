@@ -16,12 +16,12 @@ class CSVFile:
     
     
 class CustomDataset:
-    def __init__(self):
-        pass
+    def __init__(self, csv_folder=CSV_FOLDER):
+        self.csv_folder = csv_folder
     
     
     def load_all_csvs(self) -> dict[str, list[CSVFile]]:
-        csv_files = os.listdir(CSV_FOLDER)
+        csv_files = os.listdir(self.csv_folder)
         data = {}
         for csv_file in csv_files:
             if csv_file.endswith('.csv'):
@@ -30,7 +30,7 @@ class CustomDataset:
     
     
     def load_csv(self, csv_filename) -> list[CSVFile]:
-        csv_path = os.path.join(CSV_FOLDER, csv_filename)
+        csv_path = os.path.join(self.csv_folder, csv_filename)
         data = []
         with open(csv_path, 'r') as file:
             reader = csv.DictReader(file)
