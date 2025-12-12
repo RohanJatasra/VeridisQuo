@@ -34,7 +34,7 @@ class FaceDetector:
         """Minimum confidence score to accept a detection"""
         self.only_keep_top: bool = only_keep_top
         """If True and multiple faces detected, keep only the highest confidence one"""
-        self.logger: logging.Logger = logging.getLogger("VeridisQuo.FaceDetector")
+        self.logger: logging.Logger = logging.getLogger("preprocessing.FaceDetector")
         """Logger for the FaceDetector class"""
 
         try:

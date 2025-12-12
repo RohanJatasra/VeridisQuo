@@ -22,13 +22,14 @@ opencv-python = "^4.8.0"
 pytest = "^8.0.0"
 pytest-cov = "^6.0.0"
 pytest-xdist = "^3.0.0"
+pytest-mock = "^3.14.0"
 
 [tool.poetry]
 name = "VeridisQuo"
 version = "0.1.0"
 description = "Neural network specialised in deepfake detection, notably using EfficientNet and Gradcam."
 authors = ["Clement Barriere", "Theo Castillo"]
-packages = [{include = "deepfake-detector"}]
+packages = [{include = "src"}]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [ main, spatial ]
+    branches: [ main, spatial, preprocess ]
   pull_request:
     branches: [ main ]
 
@@ -33,15 +33,16 @@ jobs:
       with:
         path: ~/.cache/pypoetry
         key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-poetry-
+        restore-keys: ${{ runner.os }}-poetry-
+
+    - name: Check Poetry Lock
+      run: poetry lock --check || poetry lock
 
     - name: Install dependencies
       run: poetry install --with dev
 
     - name: Run tests
-      run: |
-        poetry run pytest tests/ -v --tb=short
+      run: poetry run pytest tests/ -v --tb=short
       env:
         # Désactiver CUDA pour les tests CI (utiliser CPU seulement)
         CUDA_VISIBLE_DEVICES: ""
