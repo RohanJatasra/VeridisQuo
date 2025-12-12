@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'deepfake-detec
 from data.dataset import CustomDataset, CSVFile
 
 class TestCustomDataset:
-
+    pass
     # def test_load_csv(self):
     #     dataset = CustomDataset()
     #     csv_data = dataset.load_csv("original.csv")
