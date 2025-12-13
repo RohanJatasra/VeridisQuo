@@ -2,13 +2,14 @@ name: Tests
 
 on:
   push:
-    branches: [ main, spatial ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         python-version: ["3.12"]
@@ -21,28 +22,69 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: latest
-        virtualenvs-create: true
-        virtualenvs-in-project: true
-
-    - name: Cache dependencies
+    # Cache Poetry installation itself
+    - name: Cache Poetry installation
       uses: actions/cache@v3
       with:
-        path: ~/.cache/pypoetry
-        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+        path: |
+          ~/.local/share/pypoetry
+          ~/.local/bin/poetry
+        key: ${{ runner.os }}-poetry-install-${{ hashFiles('**/poetry.lock') }}
         restore-keys: |
-          ${{ runner.os }}-poetry-
+          ${{ runner.os }}-poetry-install-
 
+    # Install Poetry with retry mechanism
+    - name: Install Poetry
+      uses: nick-fields/retry@v3
+      with:
+        timeout_minutes: 5
+        max_attempts: 3
+        retry_wait_seconds: 10
+        command: |
+          curl -sSL https://install.python-poetry.org | python3 - --version 1.7.1
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Verify Poetry installation
+      run: |
+        export PATH="$HOME/.local/bin:$PATH"
+        poetry --version
+
+    # Cache dependencies
+    - name: Cache Poetry dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          .venv
+          ~/.cache/pypoetry
+        key: ${{ runner.os }}-poetry-deps-${{ hashFiles('**/poetry.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-poetry-deps-
+
+    # Configure Poetry
+    - name: Configure Poetry
+      run: |
+        export PATH="$HOME/.local/bin:$PATH"
+        poetry config virtualenvs.create true
+        poetry config virtualenvs.in-project true
+
+    # Install dependencies with retry
     - name: Install dependencies
-      run: poetry install --with dev
+      uses: nick-fields/retry@v3
+      with:
+        timeout_minutes: 10
+        max_attempts: 3
+        retry_wait_seconds: 15
+        command: |
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry install --with dev --no-interaction
 
+    # Run tests
     - name: Run tests
       run: |
+        export PATH="$HOME/.local/bin:$PATH"
         poetry run pytest tests/ -v --tb=short
       env:
         # Désactiver CUDA pour les tests CI (utiliser CPU seulement)
         CUDA_VISIBLE_DEVICES: ""
-
+        # Suppression des logs TensorFlow
+        TF_CPP_MIN_LOG_LEVEL: "3"
