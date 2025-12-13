@@ -1,4 +1,31 @@
+"""
+DatasetBuilder module for extracting frames and faces from videos.
 
+This module provides functionality to:
+- Extract frames from videos in parallel
+- Detect and extract faces from frames in parallel
+- Generate CSV metadata files tracking all extracted data
+"""
+
+from __future__ import annotations
+
+# Suppress TensorFlow verbose output BEFORE any TF imports
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+import warnings
+warnings.filterwarnings('ignore')
+
+from typing import List, Dict, Tuple, Optional, Any
+from dataclasses import dataclass
+import csv
+import logging
+from multiprocessing import Pool, cpu_count
+from functools import partial
+
+import cv2
+from tqdm import tqdm
 
 from preprocessing.FramesExtractor import FramesExtractor
 from preprocessing.FaceDetector import FaceDetector
@@ -8,280 +35,469 @@ from config import (
     FACES_DIR, FRAME_DIR, DATA_FOLDER, CSV_FOLDER,
     TEST_FACES_DIR, TEST_FRAME_DIR, TEST_DATA_FOLDER, TEST_CSV_FOLDER
 )
-import os
-import csv
-import logging
-from tqdm import tqdm
-import cv2
+
+
+@dataclass
+class ProcessingConfig:
+    """Configuration for face detection and extraction."""
+
+    # Frame extraction
+    frames_per_second: int = 1
+
+    # Face detection
+    min_face_size: int = 40
+    confidence_threshold: float = 0.7
+    only_keep_top_face: bool = True
+
+    # Face extraction
+    face_target_size: Tuple[int, int] = (224, 224)
+    face_normalization: str = "zero_one"
+    face_padding: float = 0.5
 
 
 class DatasetBuilder:
-    def __init__(self, mode='train'):
+    """
+    Build datasets by extracting frames and faces from videos in parallel.
+
+    Attributes:
+        mode: Operating mode ('train' or 'test')
+        num_workers: Number of parallel workers for multiprocessing
+        config: Processing configuration
+    """
+
+    # CSV field names
+    FRAME_CSV_FIELDS = [
+        "Frame_Path", "Video_Path", "Label", "Width", "Height",
+        "Frame_Number", "Timestamp", "Dataset"
+    ]
+
+    FACE_CSV_FIELDS = [
+        "Face_Path", "Frame_Path", "Video_Path", "Label",
+        "Frame_Number", "Dataset", "Confidence",
+        "BBox_X", "BBox_Y", "BBox_Width", "BBox_Height",
+        "Face_Width", "Face_Height"
+    ]
+
+    # Metadata file names
+    FRAMES_METADATA_FILE = "frames_metadata.csv"
+    FACES_METADATA_FILE = "faces_metadata.csv"
+
+    def __init__(
+        self,
+        mode: str = 'train',
+        num_workers: Optional[int] = None,
+        config: Optional[ProcessingConfig] = None
+    ):
         """
-        Initialize DatasetBuilder with specified mode.
+        Initialize DatasetBuilder.
 
         Args:
-            mode: 'train' for training dataset or 'test' for test dataset
+            mode: Dataset mode - 'train' or 'test'
+            num_workers: Number of parallel workers. Defaults to CPU count.
+            config: Processing configuration. Defaults to ProcessingConfig().
+
+        Raises:
+            ValueError: If mode is not 'train' or 'test'
         """
         if mode not in ['train', 'test']:
             raise ValueError(f"Mode must be 'train' or 'test', got '{mode}'")
 
         self.mode = mode
+        self.num_workers = num_workers if num_workers is not None else cpu_count()
+        self.config = config or ProcessingConfig()
 
-        # Set folders based on mode
-        if mode == 'train':
+        # Set directories based on mode
+        self._setup_directories()
+
+        # Initialize dataset and logger
+        self.dataset = CustomDataset(csv_folder=self.csv_folder)
+        self.videos_path: Dict[str, List[CSVFile]] = self.dataset.load_all_csvs()
+        self.logger = logging.getLogger(f"DatasetBuilder[{mode}]")
+
+        self.logger.info(
+            f"Initialized DatasetBuilder in {mode} mode with {self.num_workers} workers"
+        )
+
+    def _setup_directories(self) -> None:
+        """Configure directory paths based on operating mode."""
+        if self.mode == 'train':
             self.csv_folder = CSV_FOLDER
             self.data_folder = DATA_FOLDER
             self.frame_dir = FRAME_DIR
             self.faces_dir = FACES_DIR
-        else:  # mode == 'test'
+        else:  # test mode
             self.csv_folder = TEST_CSV_FOLDER
             self.data_folder = TEST_DATA_FOLDER
             self.frame_dir = TEST_FRAME_DIR
             self.faces_dir = TEST_FACES_DIR
 
-        self.dataset = CustomDataset(csv_folder=self.csv_folder)
-        self.videos_path : dict[str, list[CSVFile]] = self.dataset.load_all_csvs()
-        self.logger = logging.getLogger(f"DatasetBuilder[{mode}]")
-        logging.basicConfig(level=logging.INFO)
+    # ==================== Frame Extraction ====================
 
-    def extract_frame(self):
+    def extract_frame(self) -> List[Dict[str, Any]]:
         """
-        Extract frames from all videos and create a tracking CSV file.
+        Extract frames from all videos in parallel.
+
+        Returns:
+            List of frame metadata dictionaries
         """
-        # Create frames directory
         os.makedirs(self.frame_dir, exist_ok=True)
-        
 
-        # Prepare CSV data
-        csv_data = []
+        # Prepare video list
+        all_videos = self._collect_videos()
 
-        # Collect all videos to process
-        all_videos = []
+        self.logger.info(
+            f"Starting frame extraction for {len(all_videos)} videos "
+            f"using {self.num_workers} workers..."
+        )
+
+        # Process in parallel
+        csv_data = self._parallel_process_videos(all_videos)
+
+        # Save metadata
+        self._save_frames_metadata(csv_data)
+
+        self.logger.info(
+            f"✓ Frame extraction complete! "
+            f"{len(csv_data)} frames extracted from {len(all_videos)} videos"
+        )
+
+        return csv_data
+
+    def _collect_videos(self) -> List[Tuple[str, CSVFile]]:
+        """Collect all videos from loaded CSV files."""
+        videos = []
         for csv_name, video_list in self.videos_path.items():
             for video in video_list:
-                all_videos.append((csv_name, video))
+                videos.append((csv_name, video))
+        return videos
 
-        self.logger.info(f"Starting frame extraction for {len(all_videos)} videos...")
+    def _parallel_process_videos(
+        self,
+        videos: List[Tuple[str, CSVFile]]
+    ) -> List[Dict[str, Any]]:
+        """Process videos in parallel to extract frames."""
+        process_func = partial(
+            self._process_single_video,
+            data_folder=str(self.data_folder),
+            frame_dir=str(self.frame_dir),
+            fps=self.config.frames_per_second
+        )
 
-        # Process videos with progress bar
-        with tqdm(total=len(all_videos), desc="Extracting frames", unit="video") as pbar:
-            for csv_name, video in all_videos:
-                video_path = video.File_Path
-                video_name = os.path.splitext(os.path.basename(video_path))[0]
+        with Pool(processes=self.num_workers) as pool:
+            results = list(tqdm(
+                pool.imap(process_func, videos),
+                total=len(videos),
+                desc="Extracting frames",
+                unit="video"
+            ))
 
-                complete_video_path = os.path.join(self.data_folder, video_path)
+        # Flatten results
+        return [frame for video_frames in results for frame in video_frames]
 
-                # Update progress bar description
-                pbar.set_description(f"Processing {video_name}")
+    @staticmethod
+    def _process_single_video(
+        video_data: Tuple[str, CSVFile],
+        data_folder: str,
+        frame_dir: str,
+        fps: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Worker function to extract frames from a single video.
 
-                # Skip if video file doesn't exist
-                if not os.path.exists(complete_video_path):
-                    self.logger.warning(f"Video not found: {complete_video_path}")
-                    pbar.update(1)
-                    continue
+        Args:
+            video_data: Tuple of (csv_name, video CSVFile object)
+            data_folder: Base data folder path
+            frame_dir: Directory to save extracted frames
+            fps: Frames per second to extract
 
-                try:
-                    # Initialize frame extractor
-                    video_extractor = FramesExtractor(complete_video_path, nb_fps=1)
+        Returns:
+            List of frame metadata dictionaries
+        """
+        csv_name, video = video_data
+        video_path = video.File_Path
+        video_name = os.path.splitext(os.path.basename(video_path))[0]
+        complete_video_path = os.path.join(data_folder, video_path)
 
-                    # Create output directory for this video's frames
-                    output_dir = os.path.join(self.frame_dir, video_name)
-                    os.makedirs(output_dir, exist_ok=True)
+        if not os.path.exists(complete_video_path):
+            return []
 
-                    # Extract and save frames
-                    frame_count = 0
-                    for frame, metadata in video_extractor.extract_frames():
-                        # Generate frame filename
-                        frame_filename = f"frame_{metadata['frame_number']:06d}.jpg"
-                        frame_path = os.path.join(output_dir, frame_filename)
+        try:
+            extractor = FramesExtractor(complete_video_path, nb_fps=fps)
+            output_dir = os.path.join(frame_dir, video_name)
+            os.makedirs(output_dir, exist_ok=True)
 
-                        # Save frame
-                        video_extractor.save_frame(frame, frame_path)
+            frames_data = []
+            for frame, metadata in extractor.extract_frames():
+                frame_filename = f"frame_{metadata['frame_number']:06d}.jpg"
+                frame_path = os.path.join(output_dir, frame_filename)
 
-                        # Add to CSV data
-                        csv_data.append({
-                            "Frame_Path": frame_path,
-                            "Video_Path": video_path,
-                            "Label": video.Label,
-                            "Width": video_extractor.width,
-                            "Height": video_extractor.height,
-                            "Frame_Number": metadata['frame_number'],
-                            "Timestamp": metadata['timestamp'],
-                            "Dataset": csv_name.replace('.csv', '')
-                        })
+                extractor.save_frame(frame, frame_path)
 
-                        frame_count += 1
+                frames_data.append({
+                    "Frame_Path": frame_path,
+                    "Video_Path": video_path,
+                    "Label": video.Label,
+                    "Width": extractor.width,
+                    "Height": extractor.height,
+                    "Frame_Number": metadata['frame_number'],
+                    "Timestamp": metadata['timestamp'],
+                    "Dataset": csv_name.replace('.csv', '')
+                })
 
-                    pbar.set_postfix({"frames": frame_count, "dataset": csv_name.replace('.csv', '')})
+            return frames_data
 
-                except Exception as e:
-                    self.logger.error(f"✗ Error processing {video_path}: {str(e)}")
-                finally:
-                    pbar.update(1)
+        except Exception as e:
+            logger = logging.getLogger("DatasetBuilder.Worker")
+            logger.error(f"Error processing video {video_path}: {str(e)}")
+            return []
 
-        # Save CSV
-        self.logger.info(f"Saving metadata to {self.frame_dir}...")
+    def _save_frames_metadata(self, csv_data: List[Dict[str, Any]]) -> None:
+        """Save frame extraction metadata to CSV file."""
+        metadata_path = os.path.join(self.frame_dir, self.FRAMES_METADATA_FILE)
 
-        with open(os.path.join(self.frame_dir, "frames_metadata.csv"), 'w', newline='') as csvfile:
+        self.logger.info(f"Saving metadata to {metadata_path}...")
+
+        with open(metadata_path, 'w', newline='') as csvfile:
             if csv_data:
-                fieldnames = ["Frame_Path", "Video_Path", "Label", "Width", "Height", "Frame_Number", "Timestamp", "Dataset"]
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer = csv.DictWriter(csvfile, fieldnames=self.FRAME_CSV_FIELDS)
                 writer.writeheader()
                 writer.writerows(csv_data)
 
-        self.logger.info(f"✓ Frame extraction complete! {len(csv_data)} frames extracted from {len(all_videos)} videos")
-        self.logger.info(f"✓ Metadata saved")
+        self.logger.info("✓ Metadata saved")
 
-        return csv_data
-    
-    def extract_face(self):
+    # ==================== Face Extraction ====================
+
+    def extract_face(self) -> List[Dict[str, Any]]:
         """
-        Extract faces from frames using the frames_metadata.csv file.
-        Creates a faces_metadata.csv file tracking all extracted faces.
+        Extract faces from frames in parallel.
+
+        Returns:
+            List of face metadata dictionaries
+
+        Raises:
+            FileNotFoundError: If frames metadata CSV doesn't exist
         """
-        # Create faces directory
         os.makedirs(self.faces_dir, exist_ok=True)
 
-        # Path to frames metadata CSV
-        frames_metadata_path = os.path.join(self.frame_dir, "frames_metadata.csv")
+        # Load frames metadata
+        frames_data = self._load_frames_metadata()
 
-        # Check if frames metadata exists
-        if not os.path.exists(frames_metadata_path):
-            self.logger.error(f"Frames metadata not found at {frames_metadata_path}")
-            self.logger.error("Please run extract_frame() first")
-            return []
-
-        # Initialize face detector and extractor
-        face_detector = FaceDetector(
-            min_face_size=40,
-            confidence_threshold=0.7,
-            only_keep_top=True
-        )
-        face_extractor = FaceExtractor(
-            target_size=(224, 224),
-            normalization="zero_one",
-            padding=0.5
+        self.logger.info(
+            f"Processing {len(frames_data)} frames for face extraction "
+            f"using {self.num_workers} workers..."
         )
 
-        # Read frames metadata
-        frames_data = []
-        with open(frames_metadata_path, 'r') as csvfile:
-            reader = csv.DictReader(csvfile)
-            frames_data = list(reader)
+        # Process in parallel
+        faces_csv_data, stats = self._parallel_process_frames(frames_data)
 
-        self.logger.info(f"Processing {len(frames_data)} frames for face extraction...")
+        # Save metadata
+        self._save_faces_metadata(faces_csv_data)
 
-        # Prepare CSV data for faces
-        faces_csv_data = []
-        total_faces_extracted = 0
-        frames_with_no_faces = 0
-
-        # Process frames with progress bar
-        with tqdm(total=len(frames_data), desc="Extracting faces", unit="frame") as pbar:
-            for frame_data in frames_data:
-                frame_path = frame_data['Frame_Path']
-                frame_number = int(frame_data['Frame_Number'])
-                video_path = frame_data['Video_Path']
-                label = frame_data['Label']
-                dataset = frame_data['Dataset']
-
-                pbar.set_description(f"Processing frame {frame_number}")
-
-                # Check if frame exists
-                if not os.path.exists(frame_path):
-                    self.logger.warning(f"Frame not found: {frame_path}")
-                    pbar.update(1)
-                    continue
-
-                try:
-                    # Load frame
-                    frame = cv2.imread(frame_path)
-                    if frame is None:
-                        self.logger.warning(f"Could not load frame: {frame_path}")
-                        pbar.update(1)
-                        continue
-
-                    # Detect faces
-                    detections = face_detector.detect_faces(frame, return_landmarks=False)
-
-                    if not detections:
-                        frames_with_no_faces += 1
-                        pbar.update(1)
-                        continue
-
-                    # Extract each detected face (usually just one due to only_keep_top=True)
-                    for idx, detection in enumerate(detections):
-                        bbox = detection['bbox']
-                        confidence = detection['confidence']
-
-                        # Extract and preprocess face
-                        preprocessed_face, metadata = face_extractor.extract_and_preprocess(
-                            frame,
-                            bbox,
-                            normalize=True
-                        )
-
-                        # Create output directory for faces from this video
-                        video_name = os.path.splitext(os.path.basename(video_path))[0]
-                        face_output_dir = os.path.join(self.faces_dir, video_name)
-                        os.makedirs(face_output_dir, exist_ok=True)
-
-                        # Generate face filename
-                        face_filename = f"face_frame_{frame_number:06d}_{idx:02d}.jpg"
-                        face_path = os.path.join(face_output_dir, face_filename)
-
-                        # Save face
-                        face_extractor.save(preprocessed_face, face_path, denormalize=True)
-
-                        # Add to CSV data
-                        faces_csv_data.append({
-                            "Face_Path": face_path,
-                            "Frame_Path": frame_path,
-                            "Video_Path": video_path,
-                            "Label": label,
-                            "Frame_Number": frame_number,
-                            "Dataset": dataset,
-                            "Confidence": confidence,
-                            "BBox_X": bbox[0],
-                            "BBox_Y": bbox[1],
-                            "BBox_Width": bbox[2],
-                            "BBox_Height": bbox[3],
-                            "Face_Width": face_extractor.target_size[0],
-                            "Face_Height": face_extractor.target_size[1]
-                        })
-
-                        total_faces_extracted += 1
-
-                    pbar.set_postfix({
-                        "faces": total_faces_extracted,
-                        "no_faces": frames_with_no_faces
-                    })
-
-                except Exception as e:
-                    self.logger.error(f"Error processing frame {frame_path}: {str(e)}")
-                finally:
-                    pbar.update(1)
-
-        # Save faces metadata CSV
-        self.logger.info(f"Saving faces metadata to {self.faces_dir}...")
-
-        faces_metadata_path = os.path.join(self.faces_dir, "faces_metadata.csv")
-        with open(faces_metadata_path, 'w', newline='') as csvfile:
-            if faces_csv_data:
-                fieldnames = [
-                    "Face_Path", "Frame_Path", "Video_Path", "Label",
-                    "Frame_Number", "Dataset", "Confidence",
-                    "BBox_X", "BBox_Y", "BBox_Width", "BBox_Height",
-                    "Face_Width", "Face_Height"
-                ]
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(faces_csv_data)
-
-        self.logger.info(f"✓ Face extraction complete!")
-        self.logger.info(f"✓ {total_faces_extracted} faces extracted from {len(frames_data)} frames")
-        self.logger.info(f"✓ {frames_with_no_faces} frames had no detectable faces")
-        self.logger.info(f"✓ Metadata saved to {faces_metadata_path}")
+        # Log statistics
+        self._log_face_extraction_stats(stats, len(frames_data))
 
         return faces_csv_data
+
+    def _load_frames_metadata(self) -> List[Dict[str, str]]:
+        """Load frames metadata from CSV file."""
+        metadata_path = os.path.join(self.frame_dir, self.FRAMES_METADATA_FILE)
+
+        if not os.path.exists(metadata_path):
+            raise FileNotFoundError(
+                f"Frames metadata not found at {metadata_path}. "
+                "Please run extract_frame() first."
+            )
+
+        with open(metadata_path, 'r') as csvfile:
+            reader = csv.DictReader(csvfile)
+            return list(reader)
+
+    def _parallel_process_frames(
+        self,
+        frames_data: List[Dict[str, str]]
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+        """Process frames in parallel to extract faces."""
+        process_func = partial(
+            self._process_single_frame,
+            faces_dir=str(self.faces_dir),
+            config=self.config
+        )
+
+        with Pool(processes=self.num_workers) as pool:
+            results = list(tqdm(
+                pool.imap(process_func, frames_data),
+                total=len(frames_data),
+                desc="Extracting faces",
+                unit="frame"
+            ))
+
+        # Collect statistics
+        faces_csv_data = []
+        total_faces = 0
+        frames_with_no_faces = 0
+
+        for result in results:
+            if result:
+                faces_csv_data.extend(result)
+                total_faces += len(result)
+            else:
+                frames_with_no_faces += 1
+
+        stats = {
+            'total_faces': total_faces,
+            'frames_with_no_faces': frames_with_no_faces
+        }
+
+        return faces_csv_data, stats
+
+    @staticmethod
+    def _process_single_frame(
+        frame_data: Dict[str, str],
+        faces_dir: str,
+        config: ProcessingConfig
+    ) -> List[Dict[str, Any]]:
+        """
+        Worker function to extract faces from a single frame.
+
+        Args:
+            frame_data: Dictionary containing frame metadata
+            faces_dir: Directory to save extracted faces
+            config: Processing configuration
+
+        Returns:
+            List of face metadata dictionaries
+        """
+        frame_path = frame_data['Frame_Path']
+        frame_number = int(frame_data['Frame_Number'])
+        video_path = frame_data['Video_Path']
+        label = frame_data['Label']
+        dataset = frame_data['Dataset']
+
+        if not os.path.exists(frame_path):
+            return []
+
+        try:
+            # Load frame
+            frame = cv2.imread(frame_path)
+            if frame is None:
+                return []
+
+            # Initialize detectors
+            face_detector = FaceDetector(
+                min_face_size=config.min_face_size,
+                confidence_threshold=config.confidence_threshold,
+                only_keep_top=config.only_keep_top_face
+            )
+            face_extractor = FaceExtractor(
+                target_size=config.face_target_size,
+                normalization=config.face_normalization,
+                padding=config.face_padding
+            )
+
+            # Detect faces
+            detections = face_detector.detect_faces(frame, return_landmarks=False)
+
+            if not detections:
+                return []
+
+            # Extract and save each face
+            faces_data = []
+            for idx, detection in enumerate(detections):
+                face_metadata = DatasetBuilder._extract_and_save_face(
+                    frame=frame,
+                    detection=detection,
+                    frame_number=frame_number,
+                    frame_path=frame_path,
+                    video_path=video_path,
+                    label=label,
+                    dataset=dataset,
+                    idx=idx,
+                    faces_dir=faces_dir,
+                    face_extractor=face_extractor
+                )
+                faces_data.append(face_metadata)
+
+            return faces_data
+
+        except Exception as e:
+            logger = logging.getLogger("DatasetBuilder.Worker")
+            logger.error(f"Error processing frame {frame_path}: {str(e)}")
+            return []
+
+    @staticmethod
+    def _extract_and_save_face(
+        frame: Any,
+        detection: Dict[str, Any],
+        frame_number: int,
+        frame_path: str,
+        video_path: str,
+        label: str,
+        dataset: str,
+        idx: int,
+        faces_dir: str,
+        face_extractor: FaceExtractor
+    ) -> Dict[str, Any]:
+        """Extract, save, and create metadata for a single face."""
+        bbox = detection['bbox']
+        confidence = detection['confidence']
+
+        # Extract and preprocess face
+        preprocessed_face, _ = face_extractor.extract_and_preprocess(
+            frame, bbox, normalize=True
+        )
+
+        # Determine output path
+        video_name = os.path.splitext(os.path.basename(video_path))[0]
+        face_output_dir = os.path.join(faces_dir, video_name)
+        os.makedirs(face_output_dir, exist_ok=True)
+
+        face_filename = f"face_frame_{frame_number:06d}_{idx:02d}.jpg"
+        face_path = os.path.join(face_output_dir, face_filename)
+
+        # Save face
+        face_extractor.save(preprocessed_face, face_path, denormalize=True)
+
+        # Create metadata
+        return {
+            "Face_Path": face_path,
+            "Frame_Path": frame_path,
+            "Video_Path": video_path,
+            "Label": label,
+            "Frame_Number": frame_number,
+            "Dataset": dataset,
+            "Confidence": confidence,
+            "BBox_X": bbox[0],
+            "BBox_Y": bbox[1],
+            "BBox_Width": bbox[2],
+            "BBox_Height": bbox[3],
+            "Face_Width": face_extractor.target_size[0],
+            "Face_Height": face_extractor.target_size[1]
+        }
+
+    def _save_faces_metadata(self, csv_data: List[Dict[str, Any]]) -> None:
+        """Save face extraction metadata to CSV file."""
+        metadata_path = os.path.join(self.faces_dir, self.FACES_METADATA_FILE)
+
+        self.logger.info(f"Saving faces metadata to {metadata_path}...")
+
+        with open(metadata_path, 'w', newline='') as csvfile:
+            if csv_data:
+                writer = csv.DictWriter(csvfile, fieldnames=self.FACE_CSV_FIELDS)
+                writer.writeheader()
+                writer.writerows(csv_data)
+
+        self.logger.info(f"✓ Metadata saved to {metadata_path}")
+
+    def _log_face_extraction_stats(
+        self,
+        stats: Dict[str, int],
+        total_frames: int
+    ) -> None:
+        """Log face extraction statistics."""
+        self.logger.info("✓ Face extraction complete!")
+        self.logger.info(
+            f"✓ {stats['total_faces']} faces extracted from {total_frames} frames"
+        )
+        self.logger.info(
+            f"✓ {stats['frames_with_no_faces']} frames had no detectable faces"
+        )
