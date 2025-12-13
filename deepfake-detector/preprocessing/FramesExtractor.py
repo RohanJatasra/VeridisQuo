@@ -88,23 +88,23 @@ class FramesExtractor:
             #reset video to beginning
             self._video_props.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-            while True:
+            while frame_count < self.total_frames:
                 #we only extract every n frame according to frame_interval
                 if frame_count % self.frame_interval == 0:
                     extracted = self.get_frame_at(frame_count)
-                    
+
                     if extracted is None:
                         self.logger.info(f"- extract_frames - reached end of video at frame {frame_count}.")
                         break
-                    
+
                     yield extracted
-                    
+
                     extracted_count += 1
-            
+
                 frame_count += 1
-                
+
             self.logger.info(f"- extract_frames - frame extraction complete: {extracted_count} frames extracted from {frame_count} total frames.")
-        
+
         except Exception as e:
             self.logger.error(f"- extract_frames - {e}")
             raise RuntimeError(f"Error during frame extraction: {e}")

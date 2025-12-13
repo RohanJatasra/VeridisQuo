@@ -16,7 +16,11 @@ torch = "^2.8.0"
 torchvision = "^0.24.1"
 Pillow = "^10.0.0"
 mtcnn = "^0.1.1"
+tensorflow = "^2.18.0"
 opencv-python = "^4.8.0"
+pandas = "^2.3.3"
+tqdm = "^4.66.0"
+setuptools = "<81.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

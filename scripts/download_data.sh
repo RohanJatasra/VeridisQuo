@@ -16,6 +16,8 @@ fi
 if [ -f "$zip_file" ]; then
     echo "Zip file already exists. Extracting..."
     unzip -o "$zip_file" -d "$data_dir"
+    rm "$zip_file"
+    echo "Zip file deleted."
     exit 0
 fi
 
@@ -23,3 +25,5 @@ echo "Downloading dataset..."
 kaggle datasets download xdxd003/$dataset -p "$data_dir"
 echo "Extracting..."
 unzip -o "$zip_file" -d "$data_dir"
+rm "$zip_file"
+echo "Zip file deleted."
