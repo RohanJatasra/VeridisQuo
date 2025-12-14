@@ -30,14 +30,14 @@ class TestFaceDetectorInit:
 
         detector = FaceDetector(
             min_face_size=20,
-            thresholds=[0.5, 0.6, 0.7],
+            steps_threshold=[0.5, 0.6, 0.7],
             scale_factor=0.8,
             confidence_threshold=0.85,
             only_keep_top=False
         )
 
         assert detector.min_face_size == 20
-        assert detector.thresholds == [0.5, 0.6, 0.7]
+        assert detector.steps_threshold == [0.5, 0.6, 0.7]
         assert detector.scale_factor == 0.8
         assert detector.confidence_threshold == 0.85
         assert detector.only_keep_top is False
