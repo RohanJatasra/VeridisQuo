@@ -27,9 +27,9 @@ from functools import partial
 import cv2
 from tqdm import tqdm
 
-from preprocessing.FramesExtractor import FramesExtractor
-from preprocessing.FaceDetector import FaceDetector
-from preprocessing.FaceExtractor import FaceExtractor
+from preprocessing.frames_extractor import FramesExtractor
+from preprocessing.face_detector import FaceDetector
+from preprocessing.face_extractor import FaceExtractor
 from data.dataset import CustomDataset, CSVFile
 from config import (
     FACES_DIR, FRAME_DIR, DATA_FOLDER, CSV_FOLDER,
