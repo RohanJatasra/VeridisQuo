@@ -25,7 +25,16 @@ class CSVService:
         Returns:
             Normalized field name
         """
-        return name.replace(' ', '_').replace('(', '').replace(')', '')
+        # Replace spaces with underscores
+        # Handle parentheses by replacing them with underscores too
+        normalized = name.replace(' ', '_')
+        normalized = normalized.replace('(', '_').replace(')', '')
+        # Remove double underscores
+        while '__' in normalized:
+            normalized = normalized.replace('__', '_')
+        # Remove trailing underscores
+        normalized = normalized.rstrip('_')
+        return normalized
 
     @staticmethod
     def row_csv_into_items(row: dict, schema: Type[T]) -> T:
