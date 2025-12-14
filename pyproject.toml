@@ -3,37 +3,32 @@ name = "VeridisQuo"
 version = "0.1.0"
 description = "Neural network specialised in deepfake detection, notably using EfficientNet and Gradcam."
 authors = [
-    {name = "Clement Barriere",email = "clementbarriere64@gmail.com"},
-    {name = "Theo Castillo",email = "theocastillo@yahoo.com"}
+    {name = "Clement Barriere", email = "clementbarriere64@gmail.com"},
+    {name = "Theo Castillo", email = "theocastillo@yahoo.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
-
-[tool.poetry.dependencies]
-python = ">=3.12,<3.14"
-numpy = ">=2.3.2,<3.0.0"
-torch = "^2.8.0"
-torchvision = "^0.24.1"
-Pillow = "^10.0.0"
-mtcnn = "^0.1.1"
-tensorflow = "^2.18.0"
-opencv-python = "^4.8.0"
-pandas = "^2.3.3"
-tqdm = "^4.66.0"
-setuptools = "<81.0.0"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
-pytest-cov = "^6.0.0"
-pytest-xdist = "^3.0.0"
-pytest-mock = "^3.14.0"
+dependencies = [
+    "numpy>=2.3.2,<3.0.0",
+    "torch>=2.8.0,<3.0.0",
+    "torchvision>=0.24.1,<1.0.0",
+    "Pillow>=10.0.0,<11.0.0",
+    "mtcnn>=0.1.1,<1.0.0",
+    "tensorflow>=2.18.0,<3.0.0",
+    "opencv-python>=4.8.0,<5.0.0",
+    "pandas>=2.3.3,<3.0.0",
+    "tqdm>=4.66.0,<5.0.0",
+    "setuptools<81.0.0"
+]
 
 [tool.poetry]
-name = "VeridisQuo"
-version = "0.1.0"
-description = "Neural network specialised in deepfake detection, notably using EfficientNet and Gradcam."
-authors = ["Clement Barriere", "Theo Castillo"]
 packages = [{include = "src"}]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0.0,<9.0.0"
+pytest-cov = ">=6.0.0,<7.0.0"
+pytest-xdist = ">=3.0.0,<4.0.0"
+pytest-mock = ">=3.14.0,<4.0.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
