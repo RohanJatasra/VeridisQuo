@@ -26,22 +26,22 @@ class TestFaceExtractorInit:
         extractor = FaceExtractor(
             target_size=(128, 128),
             normalization="minus_one_one",
-            padding=0.1
+            padding=10
         )
 
         assert extractor.target_size == (128, 128)
         assert extractor.normalization == "minus_one_one"
-        assert extractor.padding == 0.1
+        assert extractor.padding == 10
 
     def test_init_with_invalid_padding_negative(self):
         """Test initialization with negative padding raises ValueError."""
         with pytest.raises(ValueError, match="Invalid parameters"):
             FaceExtractor(padding=-0.1)
 
-    def test_init_with_invalid_padding_too_large(self):
-        """Test initialization with padding > 1 raises ValueError."""
+    def test_init_with_invalid_padding_negative(self):
+        """Test initialization with negative padding raises ValueError."""
         with pytest.raises(ValueError, match="Invalid parameters"):
-            FaceExtractor(padding=1.5)
+            FaceExtractor(padding=-10)
 
     def test_init_with_invalid_normalization(self):
         """Test initialization with invalid normalization falls back to zero_one."""
@@ -214,7 +214,7 @@ class TestFaceExtractorExtractAndPreprocess:
 
     def test_extract_and_preprocess_metadata(self):
         """Test metadata returned by extract_and_preprocess."""
-        extractor = FaceExtractor(target_size=(64, 64), padding=0.1, normalization="minus_one_one")
+        extractor = FaceExtractor(target_size=(64, 64), padding=10, normalization="minus_one_one")
 
         frame = np.ones((200, 200, 3), dtype=np.uint8) * 100
         bbox = [50, 50, 100, 100]
@@ -227,7 +227,7 @@ class TestFaceExtractorExtractAndPreprocess:
         assert "normalization" in metadata
         assert "padding" in metadata
         assert metadata["normalization"] == "minus_one_one"
-        assert metadata["padding"] == 0.1
+        assert metadata["padding"] == 10
 
 class TestFaceExtractorExtractRegion:
     """Tests for FaceExtractor.extract_region() method."""
@@ -248,14 +248,14 @@ class TestFaceExtractorExtractRegion:
 
     def test_extract_region_with_padding(self):
         """Test extracting region with padding applied."""
-        extractor = FaceExtractor(padding=1.0)
+        extractor = FaceExtractor(padding=50)
 
         image = np.zeros((200, 200, 3), dtype=np.uint8)
         bbox = [100, 100, 50, 50]
 
         region = extractor.extract_region(image, bbox)
 
-        # With padding=1.0, the region should be larger than the original bbox
+        # With padding=50 pixels, the region should be larger than the original bbox
         # Original bbox is 50x50, with padding it should be expanded
         assert region.shape[0] >= 50
         assert region.shape[1] >= 50
