@@ -7,7 +7,7 @@ TODO...
 ## Launch
 
 ```bash
-./veridisquo/scripts/dev.sh
+./scripts/dev.sh
 #OR
 cd veridisquo/src
 poetry install
@@ -17,7 +17,7 @@ poetry run python main.py
 ## Tests
 
 ```bash
-./veridisquo/scripts/run_tests.sh
+./scripts/run_tests.sh
 ```
 
 ## Project Structure
