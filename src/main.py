@@ -6,5 +6,4 @@ if __name__ == "__main__":
     print(message)    
     
     builder = DatasetBuilder(mode='test', num_workers=8)
-    builder.extract_frame()
-    builder.extract_face()
+    builder.build_complete_dataset()
