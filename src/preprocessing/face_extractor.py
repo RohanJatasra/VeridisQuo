@@ -14,7 +14,7 @@ class FaceExtractor:
     def __init__(self,
         target_size: Tuple[int, int] =(224, 224),
         normalization: str ="zero_one",
-        padding: float =0.
+        padding: int = 0
     ):
         """Initialize FaceExtractor
         Parameters:
@@ -23,16 +23,16 @@ class FaceExtractor:
             - "zero_one": scale pixels to [0, 1]
             - "minus_one_one": scale pixels to [-1, 1]
             - None: no normalization
-            padding (float): percentage of padding around bbox
+            padding (int): number of pixels to add as padding around bbox
         Raises:
             ValueError: if parameters are invalid
         """
         self.logger = logging.getLogger("preprocessing.FaceExtractor")
         """Logger instance for the FaceExtractor class"""
-        
+
         try:
-            assert padding >= 0.0 and padding <= 1.0, "Padding must be between 0 and 1"
-        
+            assert padding >= 0, "Padding must be >= 0"
+
         except AssertionError as e:
             self.logger.fatal(f"Invalid parameters: {e}.")
             raise ValueError(f"Invalid parameters: {e}.")
@@ -49,7 +49,7 @@ class FaceExtractor:
         self.normalization = normalization
         """Normalization method ('zero_one', 'minus_one_one', 'none')"""
         self.padding = padding
-        """Percentage of padding around bounding box of the face"""
+        """Number of pixels to add as padding around bounding box of the face"""
         
         self.logger.info("FaceExtractor initialized.")
 
@@ -149,28 +149,26 @@ class FaceExtractor:
         """
         try:
             assert len(bbox) == 4, "Bounding box must be of the form [x, y, width, height]"
-            
+
         except AssertionError as e:
             self.logger.error(f"- extract_region - {e}")
             raise ValueError(f"Invalid parameters for extract_region: {e}")
-        
+
         x, y, w, h = bbox
 
-        #apply padding
-        if self.padding >= 1:
-            pad_w = int(w * self.padding)
-            pad_h = int(h * self.padding)
-            x = max(0, x-pad_w)
-            y = max(0, y-pad_h)
-            w = min(image.shape[1]-x, w + pad_w*2)
-            h = min(image.shape[0]-y, h + pad_h*2)
+        # Apply padding (in pixels)
+        if self.padding > 0:
+            x = max(0, x - self.padding)
+            y = max(0, y - self.padding)
+            w = min(image.shape[1] - x, w + self.padding * 2)
+            h = min(image.shape[0] - y, h + self.padding * 2)
 
-        #coordinates must be within the image bounds
+        # Ensure coordinates are within image bounds
         x = max(0, min(x, image.shape[1] - 1))
         y = max(0, min(y, image.shape[0] - 1))
         x2 = min(x + w, image.shape[1])
         y2 = min(y + h, image.shape[0])
-        
+
         return image[y:y2, x:x2]
 
     def save(self,
