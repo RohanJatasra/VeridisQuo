@@ -9,7 +9,7 @@ class FaceDetector:
 
     def __init__(self,
         min_face_size: int =40,
-        thresholds: List[float] = [0.6, 0.7, 0.7],
+        steps_threshold: List[float] = [0.6, 0.7, 0.7],
         scale_factor: float =0.709,
         confidence_threshold: float =0.9,
         only_keep_top: bool =True
@@ -17,7 +17,7 @@ class FaceDetector:
         """Initializes the face detector.
         Parameters:
             min_face_size (int): minimum faces size (in pixels)
-            thresholds (List[float]): MTCNN detection thresholds for three stages
+            steps_threshold (List[float]): MTCNN detection thresholds for three stages
             scale_factor (float): scale factor for image pyramid
             confidence_threshold (float): minimum confidence score to accept detection
             only_keep_top (bool): if True and multiple faces detected, keep only the highest confidence one
@@ -26,7 +26,7 @@ class FaceDetector:
         """
         self.min_face_size: int = min_face_size
         """Minimum faces size (in pixels)"""
-        self.thresholds: List[float] = thresholds
+        self.steps_threshold: List[float] = steps_threshold
         """MTCNN detection thresholds for three stages (P-Net, R-Net, O-Net)"""
         self.scale_factor: float = scale_factor
         """Scale factor for image pyramid decomposition"""
@@ -40,12 +40,12 @@ class FaceDetector:
         try:
             self.detector: MTCNN = MTCNN(
                 min_face_size=self.min_face_size,
-                thresholds=self.thresholds,
+                steps_threshold=self.steps_threshold,
                 scale_factor=self.scale_factor
             )
             """MTCNN face detector instance"""
             self.logger.info("Initialized successfully")
-            
+
         except Exception as e:
             self.logger.fatal(f"Failed to initialize MTCNN: {e}")
             raise

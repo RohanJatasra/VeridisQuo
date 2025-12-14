@@ -3,16 +3,21 @@ import torch.nn as nn
 from torchvision import models
 
 class EfficientNetFeatureExtractor(nn.Module):
-    def __init__(self, path_to_weights=None, model_name='efficientnet_b4', pretrained=True):
+    def __init__(self, path_to_weights=None, pretrained=True):
         super(EfficientNetFeatureExtractor, self).__init__()
-    
+
+        # load EfficientNet-B4 backbone
         weights = 'DEFAULT' if pretrained else None
         self.backbone = models.efficientnet_b4(weights=weights)
 
+        # load custom weights if provided
         if path_to_weights is not None:
             self.load_weights(path_to_weights)
             
+        # feature extraction layers
         self.features = self.backbone.features
+        
+        # pooling layer
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         
     def forward(self, x):
