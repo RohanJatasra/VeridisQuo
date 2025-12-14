@@ -1,7 +1,8 @@
 #!/bin/bash
+cd "$(dirname "$0")/../src" || exit
+
 echo "📦 Installing dependencies..."
-
-cd "$(dirname "$0")/../deepfake-detector" || exit
-
 poetry install
+
+echo "🚀 Running the application..."
 poetry run python main.py
