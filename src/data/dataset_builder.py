@@ -19,7 +19,6 @@ warnings.filterwarnings('ignore')
 
 from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
-import csv
 import logging
 from multiprocessing import Pool, cpu_count
 from functools import partial
@@ -30,7 +29,10 @@ from tqdm import tqdm
 from preprocessing.frames_extractor import FramesExtractor
 from preprocessing.face_detector import FaceDetector
 from preprocessing.face_extractor import FaceExtractor
-from data.dataset import CustomDataset, CSVFile
+from data.schemas import CSVItem, FrameCSVItem, FaceCSVItem
+from data.face_forensic import FaceForensicDataset
+from utils.csv_services import CSVService
+
 from config import (
     FACES_DIR, FRAME_DIR, DATA_FOLDER, CSV_FOLDER,
     TEST_FACES_DIR, TEST_FRAME_DIR, TEST_DATA_FOLDER, TEST_CSV_FOLDER
@@ -52,7 +54,11 @@ class ProcessingConfig:
     # Face extraction
     face_target_size: Tuple[int, int] = (224, 224)
     face_normalization: str = "zero_one"
-    face_padding: float = 0.5
+    face_padding: int = 20  # pixels to add around face bbox
+
+
+
+
 
 
 class DatasetBuilder:
@@ -64,19 +70,6 @@ class DatasetBuilder:
         num_workers: Number of parallel workers for multiprocessing
         config: Processing configuration
     """
-
-    # CSV field names
-    FRAME_CSV_FIELDS = [
-        "Frame_Path", "Video_Path", "Label", "Width", "Height",
-        "Frame_Number", "Timestamp", "Dataset"
-    ]
-
-    FACE_CSV_FIELDS = [
-        "Face_Path", "Frame_Path", "Video_Path", "Label",
-        "Frame_Number", "Dataset", "Confidence",
-        "BBox_X", "BBox_Y", "BBox_Width", "BBox_Height",
-        "Face_Width", "Face_Height"
-    ]
 
     # Metadata file names
     FRAMES_METADATA_FILE = "frames_metadata.csv"
@@ -110,8 +103,8 @@ class DatasetBuilder:
         self._setup_directories()
 
         # Initialize dataset and logger
-        self.dataset = CustomDataset(csv_folder=self.csv_folder)
-        self.videos_path: Dict[str, List[CSVFile]] = self.dataset.load_all_csvs()
+        self.dataset = FaceForensicDataset(self.csv_folder)
+        self.videos_path: Dict[str, List[CSVItem]] = self.dataset.load_all_csvs()
         self.logger = logging.getLogger(f"DatasetBuilder[{mode}]")
 
         self.logger.info(
@@ -133,7 +126,7 @@ class DatasetBuilder:
 
     # ==================== Frame Extraction ====================
 
-    def extract_frame(self) -> List[Dict[str, Any]]:
+    def extract_frame(self) -> List[FrameCSVItem]:
         """
         Extract frames from all videos in parallel.
 
@@ -163,7 +156,7 @@ class DatasetBuilder:
 
         return csv_data
 
-    def _collect_videos(self) -> List[Tuple[str, CSVFile]]:
+    def _collect_videos(self) -> List[Tuple[str, CSVItem]]:
         """Collect all videos from loaded CSV files."""
         videos = []
         for csv_name, video_list in self.videos_path.items():
@@ -173,8 +166,8 @@ class DatasetBuilder:
 
     def _parallel_process_videos(
         self,
-        videos: List[Tuple[str, CSVFile]]
-    ) -> List[Dict[str, Any]]:
+        videos: List[Tuple[str, CSVItem]]
+    ) -> List[FrameCSVItem]:
         """Process videos in parallel to extract frames."""
         process_func = partial(
             self._process_single_video,
@@ -196,16 +189,16 @@ class DatasetBuilder:
 
     @staticmethod
     def _process_single_video(
-        video_data: Tuple[str, CSVFile],
+        video_data: Tuple[str, CSVItem],
         data_folder: str,
         frame_dir: str,
         fps: int
-    ) -> List[Dict[str, Any]]:
+    ) -> List[FrameCSVItem]:
         """
         Worker function to extract frames from a single video.
 
         Args:
-            video_data: Tuple of (csv_name, video CSVFile object)
+            video_data: Tuple of (csv_name, video CSVItem object)
             data_folder: Base data folder path
             frame_dir: Directory to save extracted frames
             fps: Frames per second to extract
@@ -233,16 +226,17 @@ class DatasetBuilder:
 
                 extractor.save_frame(frame, frame_path)
 
-                frames_data.append({
-                    "Frame_Path": frame_path,
-                    "Video_Path": video_path,
-                    "Label": video.Label,
-                    "Width": extractor.width,
-                    "Height": extractor.height,
-                    "Frame_Number": metadata['frame_number'],
-                    "Timestamp": metadata['timestamp'],
-                    "Dataset": csv_name.replace('.csv', '')
-                })
+                frame_item = FrameCSVItem(
+                    Frame_Path=frame_path,
+                    Video_Path=video_path,
+                    Label=video.Label,
+                    Width=extractor.width,
+                    Height=extractor.height,
+                    Frame_Number=metadata['frame_number'],
+                    Timestamp=metadata['timestamp'],
+                    Dataset=csv_name.replace('.csv', '')
+                )
+                frames_data.append(frame_item)
 
             return frames_data
 
@@ -251,23 +245,19 @@ class DatasetBuilder:
             logger.error(f"Error processing video {video_path}: {str(e)}")
             return []
 
-    def _save_frames_metadata(self, csv_data: List[Dict[str, Any]]) -> None:
+    def _save_frames_metadata(self, csv_data: List[FrameCSVItem]) -> None:
         """Save frame extraction metadata to CSV file."""
         metadata_path = os.path.join(self.frame_dir, self.FRAMES_METADATA_FILE)
 
         self.logger.info(f"Saving metadata to {metadata_path}...")
 
-        with open(metadata_path, 'w', newline='') as csvfile:
-            if csv_data:
-                writer = csv.DictWriter(csvfile, fieldnames=self.FRAME_CSV_FIELDS)
-                writer.writeheader()
-                writer.writerows(csv_data)
+        CSVService.save_csv(metadata_path, csv_data, FrameCSVItem)
 
         self.logger.info("✓ Metadata saved")
 
     # ==================== Face Extraction ====================
 
-    def extract_face(self) -> List[Dict[str, Any]]:
+    def extract_face(self) -> List[FaceCSVItem]:
         """
         Extract faces from frames in parallel.
 
@@ -298,7 +288,7 @@ class DatasetBuilder:
 
         return faces_csv_data
 
-    def _load_frames_metadata(self) -> List[Dict[str, str]]:
+    def _load_frames_metadata(self) -> List[FrameCSVItem]:
         """Load frames metadata from CSV file."""
         metadata_path = os.path.join(self.frame_dir, self.FRAMES_METADATA_FILE)
 
@@ -308,14 +298,12 @@ class DatasetBuilder:
                 "Please run extract_frame() first."
             )
 
-        with open(metadata_path, 'r') as csvfile:
-            reader = csv.DictReader(csvfile)
-            return list(reader)
+        return CSVService.load_csv(metadata_path, FrameCSVItem)
 
     def _parallel_process_frames(
         self,
-        frames_data: List[Dict[str, str]]
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+        frames_data: List[FrameCSVItem]
+    ) -> Tuple[List[FaceCSVItem], Dict[str, int]]:
         """Process frames in parallel to extract faces."""
         process_func = partial(
             self._process_single_frame,
@@ -352,26 +340,26 @@ class DatasetBuilder:
 
     @staticmethod
     def _process_single_frame(
-        frame_data: Dict[str, str],
+        frame_data: FrameCSVItem,
         faces_dir: str,
         config: ProcessingConfig
-    ) -> List[Dict[str, Any]]:
+    ) -> List[FaceCSVItem]:
         """
         Worker function to extract faces from a single frame.
 
         Args:
-            frame_data: Dictionary containing frame metadata
+            frame_data: FrameCSVItem containing frame metadata
             faces_dir: Directory to save extracted faces
             config: Processing configuration
 
         Returns:
-            List of face metadata dictionaries
+            List of FaceCSVItem instances
         """
-        frame_path = frame_data['Frame_Path']
-        frame_number = int(frame_data['Frame_Number'])
-        video_path = frame_data['Video_Path']
-        label = frame_data['Label']
-        dataset = frame_data['Dataset']
+        frame_path = frame_data.Frame_Path
+        frame_number = frame_data.Frame_Number
+        video_path = frame_data.Video_Path
+        label = frame_data.Label
+        dataset = frame_data.Dataset
 
         if not os.path.exists(frame_path):
             return []
@@ -436,7 +424,7 @@ class DatasetBuilder:
         idx: int,
         faces_dir: str,
         face_extractor: FaceExtractor
-    ) -> Dict[str, Any]:
+    ) -> FaceCSVItem:
         """Extract, save, and create metadata for a single face."""
         bbox = detection['bbox']
         confidence = detection['confidence']
@@ -457,34 +445,30 @@ class DatasetBuilder:
         # Save face
         face_extractor.save(preprocessed_face, face_path, denormalize=True)
 
-        # Create metadata
-        return {
-            "Face_Path": face_path,
-            "Frame_Path": frame_path,
-            "Video_Path": video_path,
-            "Label": label,
-            "Frame_Number": frame_number,
-            "Dataset": dataset,
-            "Confidence": confidence,
-            "BBox_X": bbox[0],
-            "BBox_Y": bbox[1],
-            "BBox_Width": bbox[2],
-            "BBox_Height": bbox[3],
-            "Face_Width": face_extractor.target_size[0],
-            "Face_Height": face_extractor.target_size[1]
-        }
+        # Create metadata as FaceCSVItem
+        return FaceCSVItem(
+            Face_Path=face_path,
+            Frame_Path=frame_path,
+            Video_Path=video_path,
+            Label=label,
+            Frame_Number=frame_number,
+            Dataset=dataset,
+            Confidence=confidence,
+            BBox_X=bbox[0],
+            BBox_Y=bbox[1],
+            BBox_Width=bbox[2],
+            BBox_Height=bbox[3],
+            Face_Width=face_extractor.target_size[0],
+            Face_Height=face_extractor.target_size[1]
+        )
 
-    def _save_faces_metadata(self, csv_data: List[Dict[str, Any]]) -> None:
+    def _save_faces_metadata(self, csv_data: List[FaceCSVItem]) -> None:
         """Save face extraction metadata to CSV file."""
         metadata_path = os.path.join(self.faces_dir, self.FACES_METADATA_FILE)
 
         self.logger.info(f"Saving faces metadata to {metadata_path}...")
 
-        with open(metadata_path, 'w', newline='') as csvfile:
-            if csv_data:
-                writer = csv.DictWriter(csvfile, fieldnames=self.FACE_CSV_FIELDS)
-                writer.writeheader()
-                writer.writerows(csv_data)
+        CSVService.save_csv(metadata_path, csv_data, FaceCSVItem)
 
         self.logger.info(f"✓ Metadata saved to {metadata_path}")
 
@@ -501,3 +485,12 @@ class DatasetBuilder:
         self.logger.info(
             f"✓ {stats['frames_with_no_faces']} frames had no detectable faces"
         )
+
+
+
+
+class FrameDatasetBuilder:
+    pass
+
+class FaceDatasetBuilder:
+    pass
