@@ -11,7 +11,7 @@ from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / "deepfake-detector"))
+sys.path.insert(0, str(project_root / "src"))
 
 from gradcam import GradCAM, GradCAMVisualizer
 from spatial.efficient_net import EfficientNetFeatureExtractor

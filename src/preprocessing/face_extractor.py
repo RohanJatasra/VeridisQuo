@@ -27,7 +27,7 @@ class FaceExtractor:
         Raises:
             ValueError: if parameters are invalid
         """
-        self.logger = logging.getLogger("VeridisQuo.FaceExtractor")
+        self.logger = logging.getLogger("preprocessing.FaceExtractor")
         """Logger instance for the FaceExtractor class"""
         
         try:
