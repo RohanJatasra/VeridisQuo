@@ -33,7 +33,6 @@ jobs:
           key: poetry-binary-${{ runner.os }}-1.8.0
 
       - name: Install Poetry
-        if: steps.cached-poetry.outputs.cache-hit != 'true'
         run: |
           pip install poetry==1.8.0
           poetry config virtualenvs.create false
