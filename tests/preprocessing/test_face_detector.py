@@ -15,11 +15,9 @@ import importlib.util
 
 spec = importlib.util.spec_from_file_location(
     "face_detector",
-    os.path.join(os.path.dirname(__file__), '../..', 'src', 'preprocessing', 'face_detector.py')
+    os.path.join(os.path.dirname(__file__), '../..', 'src', 'preprocessing')
 )
-face_detector_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(face_detector_module)
-FaceDetector = face_detector_module.FaceDetector
+from preprocessing import FaceDetector
 
 
 def create_mock_yolo_box(x1, y1, x2, y2, confidence):

@@ -14,6 +14,7 @@ from functools import partial
 
 from tqdm import tqdm
 
+from preprocessing import FramesExtractor
 from core.schemas import CSVItem, FrameCSVItem
 from utils.csv_services import CSVService
 

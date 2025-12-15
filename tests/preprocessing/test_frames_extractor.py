@@ -10,11 +10,9 @@ import importlib.util
 
 spec = importlib.util.spec_from_file_location(
     "frames_extractor",
-    os.path.join(os.path.dirname(__file__), '../..', 'src', 'preprocessing', 'frames_extractor.py')
+    os.path.join(os.path.dirname(__file__), '../..', 'src', 'preprocessing')
 )
-frames_extractor_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(frames_extractor_module)
-FramesExtractor = frames_extractor_module.FramesExtractor
+from preprocessing import FramesExtractor
 
 class TestFramesExtractorInit:
     """Tests for FramesExtractor initialization."""
