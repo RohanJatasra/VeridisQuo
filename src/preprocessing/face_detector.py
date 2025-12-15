@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 import logging
 from ultralytics import YOLO
 from pathlib import Path
@@ -15,7 +15,8 @@ class FaceDetector:
         model_path: Optional[str] = None,
         min_face_size: int = 40,
         confidence_threshold: float = 0.7,
-        only_keep_top: bool = True
+        only_keep_top: bool = True,
+        device: Union[str, int] = "cpu"
     ):
         """Initializes the YOLO face detector.
 
@@ -25,6 +26,7 @@ class FaceDetector:
             min_face_size (int): minimum face size (in pixels) - faces smaller than this will be filtered out
             confidence_threshold (float): minimum confidence score to accept detection
             only_keep_top (bool): if True and multiple faces detected, keep only the highest confidence one
+            device (Union[str, int]): device to run inference on. Can be 'cpu', 'cuda', or GPU index (0, 1, etc.)
 
         Raises:
             Exception: if YOLO model initialization fails or model file not found
@@ -35,6 +37,8 @@ class FaceDetector:
         """Minimum confidence score to accept a detection"""
         self.only_keep_top: bool = only_keep_top
         """If True and multiple faces detected, keep only the highest confidence one"""
+        self.device: Union[str, int] = device
+        """Device to run inference on (cpu, cuda, or GPU index)"""
         self.logger: logging.Logger = logging.getLogger("preprocessing.FaceDetector")
         """Logger for the FaceDetector class"""
 
@@ -51,7 +55,11 @@ class FaceDetector:
             # Load YOLO model
             self.detector: YOLO = YOLO(model_path)
             """YOLO face detector instance"""
-            self.logger.info(f"YOLO face detector initialized successfully from {model_path}")
+
+            # Move model to specified device
+            self.detector.to(device)
+
+            self.logger.info(f"YOLO face detector initialized successfully from {model_path} on device: {device}")
 
         except Exception as e:
             self.logger.fatal(f"Failed to initialize YOLO face detector: {e}")
@@ -85,7 +93,8 @@ class FaceDetector:
         try:
             # Run YOLO inference
             # verbose=False to suppress YOLO output
-            results = self.detector(image, verbose=False)
+            # device is already set in __init__, but we can pass it explicitly for clarity
+            results = self.detector(image, verbose=False, device=self.device)
 
             if not results or len(results) == 0:
                 self.logger.debug("No faces detected by YOLO")

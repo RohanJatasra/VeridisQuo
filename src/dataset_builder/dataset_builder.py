@@ -63,7 +63,8 @@ class DatasetBuilder:
         self,
         mode: str = 'train',
         num_workers: Optional[int] = None,
-        config: Optional[ProcessingConfig] = None
+        config: Optional[ProcessingConfig] = None,
+        device: str = "cpu"
     ):
         """
         Initialize DatasetBuilder.
@@ -72,6 +73,7 @@ class DatasetBuilder:
             mode: Dataset mode - 'train' or 'test'
             num_workers: Number of parallel workers. Defaults to CPU count.
             config: Processing configuration. Defaults to ProcessingConfig().
+            device: Device to use for face detection (cpu or cuda)
 
         Raises:
             ValueError: If mode is not 'train' or 'test'
@@ -82,6 +84,7 @@ class DatasetBuilder:
         self.mode = mode
         self.num_workers = num_workers if num_workers is not None else cpu_count()
         self.config = config or ProcessingConfig()
+        self.device = device
 
         # Set directories based on mode
         self._setup_directories()
@@ -138,7 +141,8 @@ class DatasetBuilder:
                 only_keep_top_face=self.config.only_keep_top_face,
                 face_target_size=self.config.face_target_size,
                 face_normalization=self.config.face_normalization,
-                face_padding=self.config.face_padding
+                face_padding=self.config.face_padding,
+                device=self.device
             )
         return self._face_builder
 

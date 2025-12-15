@@ -43,7 +43,8 @@ class FaceDatasetBuilder:
         only_keep_top_face: bool = True,
         face_target_size: Tuple[int, int] = (224, 224),
         face_normalization: str = "zero_one",
-        face_padding: int = 20
+        face_padding: int = 20,
+        device: str = "cpu"
     ):
         """
         Initialize FaceDatasetBuilder.
@@ -58,6 +59,7 @@ class FaceDatasetBuilder:
             face_target_size: Target size for face images
             face_normalization: Normalization method
             face_padding: Padding in pixels around face bbox
+            device: Device to use for face detection (cpu or cuda)
         """
         self.frame_dir = frame_dir
         self.faces_dir = faces_dir
@@ -70,6 +72,7 @@ class FaceDatasetBuilder:
         self.face_target_size = face_target_size
         self.face_normalization = face_normalization
         self.face_padding = face_padding
+        self.device = device
 
         self.logger = logging.getLogger("FaceDatasetBuilder")
 
@@ -122,7 +125,8 @@ class FaceDatasetBuilder:
             only_keep_top_face=self.only_keep_top_face,
             face_target_size=self.face_target_size,
             face_normalization=self.face_normalization,
-            face_padding=self.face_padding
+            face_padding=self.face_padding,
+            device=self.device
         )
 
         with Pool(processes=self.num_workers) as pool:
@@ -161,7 +165,8 @@ class FaceDatasetBuilder:
         only_keep_top_face: bool,
         face_target_size: Tuple[int, int],
         face_normalization: str,
-        face_padding: int
+        face_padding: int,
+        device: str = "cpu"
     ) -> List[FaceCSVItem]:
         """
         Worker function to extract faces from a single frame.
@@ -169,6 +174,7 @@ class FaceDatasetBuilder:
         Args:
             frame_data: FrameCSVItem containing frame metadata
             faces_dir: Directory to save extracted faces
+            device: Device to use for face detection (cpu or cuda)
             (other args are configuration parameters)
 
         Returns:
@@ -198,7 +204,8 @@ class FaceDatasetBuilder:
             face_detector = FaceDetector(
                 min_face_size=min_face_size,
                 confidence_threshold=confidence_threshold,
-                only_keep_top=only_keep_top_face
+                only_keep_top=only_keep_top_face,
+                device=device
             )
             face_extractor = FaceExtractor(
                 target_size=face_target_size,
