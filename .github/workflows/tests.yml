@@ -37,7 +37,9 @@ jobs:
             venv-${{ runner.os }}-
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: |
+          poetry install --no-interaction
+          poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu --force-reinstall
 
       - name: Run tests
         run: poetry run pytest tests/ -v --tb=short
