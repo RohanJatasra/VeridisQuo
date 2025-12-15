@@ -13,48 +13,54 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    container:
+      image: python:3.12-slim
     timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Install system dependencies for OpenCV
+        run: |
+          apt-get update
+          apt-get install -y libgl1 libglib2.0-0
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        id: cached-poetry-dependencies
+      - name: Cache Poetry installation
+        id: cached-poetry
         uses: actions/cache@v4
         with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          path: /usr/local/bin/poetry
+          key: poetry-binary-${{ runner.os }}-1.8.0
+
+      - name: Install Poetry
+        if: steps.cached-poetry.outputs.cache-hit != 'true'
+        run: |
+          pip install poetry==1.8.0
+          poetry config virtualenvs.create false
+
+      - name: Configure Poetry
+        if: steps.cached-poetry.outputs.cache-hit == 'true'
+        run: poetry config virtualenvs.create false
+
+      - name: Cache dependencies
+        id: cached-deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/python3.12/site-packages
+            /usr/local/bin
+          key: deps-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
           restore-keys: |
-            venv-${{ runner.os }}-
+            deps-${{ runner.os }}-
 
       - name: Install dependencies (CPU-only)
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        if: steps.cached-deps.outputs.cache-hit != 'true'
         run: |
-          # Install all dependencies except ML group (PyTorch, TensorFlow)
-          poetry install --without ml --no-interaction --no-root
-          # Install CPU-only versions of ML frameworks
-          poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          poetry run pip install tensorflow-cpu
-        env:
-          PIP_NO_CACHE_DIR: "1"
-
-      - name: Install project
-        run: poetry install --only-root
+          # Poetry will use CPU-only PyTorch from pytorch-cpu source defined in pyproject.toml
+          poetry install --no-interaction
 
       - name: Run tests
         run: poetry run pytest tests/ -v --tb=short
         env:
           # Désactiver CUDA pour les tests CI (utiliser CPU seulement)
           CUDA_VISIBLE_DEVICES: ""
-
