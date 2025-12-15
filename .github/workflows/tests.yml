@@ -13,44 +13,42 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    container:
+      image: thekevjames/poetry:1.8-python3.12
     timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Configure Poetry
+        run: poetry config virtualenvs.create false
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
+      - name: Load cached dependencies
         id: cached-poetry-dependencies
         uses: actions/cache@v4
         with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          path: |
+            ~/.cache/pypoetry
+            ~/.cache/pip
+          key: poetry-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
           restore-keys: |
-            venv-${{ runner.os }}-
+            poetry-${{ runner.os }}-
 
       - name: Install dependencies (CPU-only)
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: |
-          # Install all dependencies except ML group (PyTorch, TensorFlow)
-          poetry install --without ml --no-interaction --no-root
-          # Install CPU-only versions of ML frameworks
+          # Install all dependencies except ML group (PyTorch)
+          poetry install --without ml --no-interaction
+          # Install CPU-only version of PyTorch for YOLO
           poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          poetry run pip install tensorflow-cpu
         env:
-          PIP_NO_CACHE_DIR: "1"
+          PIP_NO_CACHE_DIR: "0"
 
-      - name: Install project
-        run: poetry install --only-root
+      - name: Install dependencies (from cache)
+        if: steps.cached-poetry-dependencies.outputs.cache-hit == 'true'
+        run: |
+          poetry install --without ml --no-interaction
+          poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
       - name: Run tests
         run: poetry run pytest tests/ -v --tb=short
