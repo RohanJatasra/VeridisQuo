@@ -64,4 +64,3 @@ jobs:
         env:
           # Désactiver CUDA pour les tests CI (utiliser CPU seulement)
           CUDA_VISIBLE_DEVICES: ""
-
