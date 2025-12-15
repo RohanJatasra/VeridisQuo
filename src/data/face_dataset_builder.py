@@ -13,8 +13,8 @@ from functools import partial
 import cv2
 from tqdm import tqdm
 
-from preprocessing.face_detector import FaceDetector
-from preprocessing.face_extractor import FaceExtractor
+from preprocessing import FaceDetector
+from preprocessing import FaceExtractor
 from data.schemas import FrameCSVItem, FaceCSVItem
 from utils.csv_services import CSVService
 

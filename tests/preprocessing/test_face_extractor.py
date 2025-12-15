@@ -12,11 +12,9 @@ import importlib.util
 
 spec = importlib.util.spec_from_file_location(
     "face_extractor",
-    os.path.join(os.path.dirname(__file__), '../..', 'src', 'preprocessing', 'face_extractor.py')
+    os.path.join(os.path.dirname(__file__), '../..', 'src', 'preprocessing')
 )
-face_extractor_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(face_extractor_module)
-FaceExtractor = face_extractor_module.FaceExtractor
+from preprocessing import FaceExtractor
 
 class TestFaceExtractorInit:
     """Tests for FaceExtractor initialization."""
