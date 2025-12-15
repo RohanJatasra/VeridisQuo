@@ -14,40 +14,46 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: thekevjames/poetry:1.8-python3.12
+      image: python:3.12-slim
     timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache Poetry installation
+        id: cached-poetry
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/poetry
+          key: poetry-binary-${{ runner.os }}-1.8.0
+
+      - name: Install Poetry
+        if: steps.cached-poetry.outputs.cache-hit != 'true'
+        run: |
+          pip install poetry==1.8.0
+          poetry config virtualenvs.create false
+
       - name: Configure Poetry
+        if: steps.cached-poetry.outputs.cache-hit == 'true'
         run: poetry config virtualenvs.create false
 
-      - name: Load cached dependencies
-        id: cached-poetry-dependencies
+      - name: Cache dependencies
+        id: cached-deps
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/pypoetry
-            ~/.cache/pip
-          key: poetry-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+            /usr/local/lib/python3.12/site-packages
+            /usr/local/bin
+          key: deps-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
           restore-keys: |
-            poetry-${{ runner.os }}-
+            deps-${{ runner.os }}-
 
       - name: Install dependencies (CPU-only)
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        if: steps.cached-deps.outputs.cache-hit != 'true'
         run: |
           # Install all dependencies except ML group (PyTorch)
           poetry install --without ml --no-interaction
-          # Install CPU-only version of PyTorch for YOLO
-          poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-        env:
-          PIP_NO_CACHE_DIR: "0"
-
-      - name: Install dependencies (from cache)
-        if: steps.cached-poetry-dependencies.outputs.cache-hit == 'true'
-        run: |
-          poetry install --without ml --no-interaction
+          # Install CPU-only version of PyTorch for YOLO/Ultralytics
           poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
       - name: Run tests
