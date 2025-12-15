@@ -174,7 +174,12 @@ class FaceDatasetBuilder:
         Returns:
             List of FaceCSVItem instances
         """
-        frame_path = frame_data.Frame_Path
+        # Reconstruct absolute path from relative path
+        # frame_data.Frame_Path is relative to frame_dir
+        # We need to get frame_dir from faces_dir (both are siblings)
+        frame_dir = os.path.join(os.path.dirname(faces_dir), "frames")
+        frame_path = os.path.join(frame_dir, frame_data.Frame_Path)
+
         frame_number = frame_data.Frame_Number
         video_path = frame_data.Video_Path
         label = frame_data.Label
@@ -264,9 +269,12 @@ class FaceDatasetBuilder:
         # Save face
         face_extractor.save(preprocessed_face, face_path, denormalize=True)
 
+        # Create relative path (relative to faces_dir)
+        relative_face_path = os.path.join(video_name, face_filename)
+
         # Create metadata as FaceCSVItem
         return FaceCSVItem(
-            Face_Path=face_path,
+            Face_Path=relative_face_path,
             Frame_Path=frame_path,
             Video_Path=video_path,
             Label=label,
