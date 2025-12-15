@@ -2,7 +2,7 @@
 Data loading and processing modules.
 """
 
-from .schemas import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit
+from .schemas import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit, PreprocessCSVItem
 from .face_forensic import FaceForensicDataset
 from .dataset_builder import DatasetBuilder, ProcessingConfig
 from .frame_dataset_builder import FrameDatasetBuilder
@@ -14,6 +14,7 @@ __all__ = [
     "CSVItem",
     "FrameCSVItem",
     "FaceCSVItem",
+    "PreprocessCSVItem",
     "DatasetSplit",
     "FaceForensicDataset",
     "DatasetBuilder",

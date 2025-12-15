@@ -42,6 +42,21 @@ class FaceCSVItem:
     BBox_Height: int
     Face_Width: int
     Face_Height: int
+    
+    
+@dataclass
+class PreprocessCSVItem:
+    Face_Path: str
+    Label: str
+    Frame_Number: int
+    Dataset: str
+    Confidence: float
+    BBox_X: int
+    BBox_Y: int
+    BBox_Width: int
+    BBox_Height: int
+    Face_Width: int
+    Face_Height: int
 
 
 @dataclass
