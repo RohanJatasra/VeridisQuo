@@ -7,9 +7,9 @@ from unittest.mock import Mock, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..', 'src'))
 
-# Mock MTCNN before importing face_detector
-sys.modules['mtcnn'] = MagicMock()
-sys.modules['mtcnn'].MTCNN = MagicMock
+# Mock YOLO before importing face_detector
+sys.modules['ultralytics'] = MagicMock()
+sys.modules['ultralytics'].YOLO = MagicMock
 
 import importlib.util
 

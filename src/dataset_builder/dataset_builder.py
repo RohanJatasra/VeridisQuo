@@ -4,11 +4,6 @@ DatasetBuilder module - orchestrates frame and face extraction.
 
 from __future__ import annotations
 
-# Suppress TensorFlow verbose output BEFORE any TF imports
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-
 import warnings
 warnings.filterwarnings('ignore')
 
