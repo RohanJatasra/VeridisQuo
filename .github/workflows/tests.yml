@@ -20,6 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install system dependencies for OpenCV
+        run: |
+          apt-get update
+          apt-get install -y libgl1-mesa-glx libglib2.0-0
+
       - name: Cache Poetry installation
         id: cached-poetry
         uses: actions/cache@v4
