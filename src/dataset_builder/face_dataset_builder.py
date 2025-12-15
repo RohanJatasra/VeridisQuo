@@ -15,7 +15,11 @@ from tqdm import tqdm
 
 from preprocessing import FaceDetector
 from preprocessing import FaceExtractor
+<<<<<<< HEAD:src/dataset_builder/face_dataset_builder.py
 from core.schemas import FrameCSVItem, FaceCSVItem
+=======
+from data.schemas import FrameCSVItem, FaceCSVItem
+>>>>>>> f99f946 (Refactored module export and use):src/data/face_dataset_builder.py
 from utils.csv_services import CSVService
 
 

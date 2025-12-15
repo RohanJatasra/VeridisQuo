@@ -18,6 +18,7 @@ spec = importlib.util.spec_from_file_location(
     os.path.join(os.path.dirname(__file__), '../..', 'src', 'preprocessing')
 )
 from preprocessing import FaceDetector
+<<<<<<< HEAD
 
 
 def create_mock_yolo_box(x1, y1, x2, y2, confidence):
@@ -44,6 +45,8 @@ def create_mock_yolo_result(boxes_data):
 
     return mock_result
 
+=======
+>>>>>>> f99f946 (Refactored module export and use)
 
 class TestFaceDetectorInit:
     """Tests for FaceDetector initialization."""
