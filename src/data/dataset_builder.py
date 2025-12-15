@@ -12,21 +12,28 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import warnings
 warnings.filterwarnings('ignore')
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from dataclasses import dataclass
 import logging
 from multiprocessing import cpu_count
 from typing import Tuple
 
-from data.schemas import CSVItem, FrameCSVItem, FaceCSVItem
+from data.schemas import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit
 from data.face_forensic import FaceForensicDataset
 from data.frame_dataset_builder import FrameDatasetBuilder
 from data.face_dataset_builder import FaceDatasetBuilder
+from data.dataset_balancer import DatasetBalancer
+from data.dataset_splitter import DatasetSplitter
 
 from config import (
     FACES_DIR, FRAME_DIR, DATA_FOLDER, CSV_FOLDER,
-    TEST_FACES_DIR, TEST_FRAME_DIR, TEST_DATA_FOLDER, TEST_CSV_FOLDER
+    TEST_FACES_DIR, TEST_FRAME_DIR, TEST_DATA_FOLDER, TEST_CSV_FOLDER,
+    PREPROCESSED_DATASET_DIR, TRAIN_PREPROCESSED_DIR,
+    TEST_PREPROCESSED_DIR, EVAL_PREPROCESSED_DIR
 )
+from utils.csv_services import CSVService
+import shutil
+from pathlib import Path
 
 
 @dataclass
@@ -163,20 +170,170 @@ class DatasetBuilder:
         """
         return self.face_builder.extract_faces()
 
-    def build_complete_dataset(self) -> Tuple[List[FrameCSVItem], List[FaceCSVItem]]:
+    def build_complete_dataset(
+        self,
+        balance: bool = True,
+        balance_method: str = 'oversample',
+        split: bool = True,
+        train_ratio: float = 0.7,
+        test_ratio: float = 0.15,
+        eval_ratio: float = 0.15,
+        save_preprocessed: bool = True,
+        random_state: Optional[int] = 42
+    ) -> Union[Tuple[List[FrameCSVItem], List[FaceCSVItem]], Tuple[List[FrameCSVItem], DatasetSplit]]:
         """
-        Run the complete pipeline: extract frames then faces.
+        Run the complete pipeline: extract frames, faces, balance, split, and save.
+
+        Pipeline steps:
+        1. Extract frames from videos → saved to FRAME_DIR
+        2. Extract faces from frames → saved to FACES_DIR
+        3. Balance FAKE/REAL classes (optional)
+        4. Split into train/test/eval sets (optional)
+        5. Save preprocessed dataset (optional) → saved to PREPROCESSED_DATASET_DIR
+
+        Args:
+            balance: Whether to balance FAKE/REAL classes (default: True)
+            balance_method: Method for balancing - 'undersample' or 'oversample' (default: 'undersample')
+            split: Whether to split into train/test/eval sets (default: True)
+            train_ratio: Proportion for training set (default: 0.7)
+            test_ratio: Proportion for test set (default: 0.15)
+            eval_ratio: Proportion for eval set (default: 0.15)
+            save_preprocessed: Whether to save preprocessed dataset to disk (default: True)
+            random_state: Random seed for reproducibility (default: 42)
 
         Returns:
-            Tuple of (frames_data, faces_data)
+            If split=True: Tuple of (frames_data, dataset_split)
+            If split=False: Tuple of (frames_data, faces_data)
         """
         self.logger.info("Starting complete dataset build pipeline...")
 
         # Step 1: Extract frames
+        self.logger.info("Step 1/5: Extracting frames from videos...")
         frames_data = self.extract_frame()
+        self.logger.info(f"✓ Extracted {len(frames_data)} frames")
 
         # Step 2: Extract faces
+        self.logger.info("Step 2/5: Extracting faces from frames...")
         faces_data = self.extract_face()
+        self.logger.info(f"✓ Extracted {len(faces_data)} faces")
 
-        self.logger.info("✓ Complete dataset build finished!")
-        return frames_data, faces_data
+        # Step 3: Balance dataset (optional)
+        if balance:
+            self.logger.info(f"Step 3/5: Balancing dataset using {balance_method}...")
+            balancer = DatasetBalancer(random_state=random_state)
+
+            # Log initial distribution
+            distribution = balancer.get_class_distribution(faces_data)
+            self.logger.info(
+                f"Initial distribution - FAKE: {distribution['fake']['count']}, "
+                f"REAL: {distribution['real']['count']} "
+                f"(ratio: {distribution['ratio']:.2f})"
+            )
+
+            faces_data = balancer.balance(faces_data, method=balance_method)
+            self.logger.info("✓ Dataset balanced")
+        else:
+            self.logger.info("Step 3/5: Skipping balancing (balance=False)")
+
+        # Step 4: Split dataset (optional)
+        if split:
+            self.logger.info("Step 4/5: Splitting dataset into train/test/eval...")
+            splitter = DatasetSplitter(random_state=random_state)
+
+            dataset_split = splitter.split(
+                faces_data,
+                train_ratio=train_ratio,
+                test_ratio=test_ratio,
+                eval_ratio=eval_ratio
+            )
+
+            # Validate split
+            if splitter.validate_split(dataset_split, faces_data):
+                self.logger.info("✓ Split validation passed")
+            else:
+                self.logger.warning("⚠ Split validation failed!")
+
+            # Step 5: Save preprocessed dataset (optional)
+            if save_preprocessed:
+                self.logger.info("Step 5/5: Saving preprocessed dataset...")
+                self.save_preprocessed_dataset(dataset_split)
+                self.logger.info("✓ Preprocessed dataset saved")
+            else:
+                self.logger.info("Step 5/5: Skipping save (save_preprocessed=False)")
+
+            self.logger.info("✓ Complete dataset build finished!")
+            return frames_data, dataset_split
+        else:
+            self.logger.info("Step 4/5: Skipping split (split=False)")
+            self.logger.info("Step 5/5: Skipping save (split=False)")
+            self.logger.info("✓ Complete dataset build finished!")
+            return frames_data, faces_data
+
+    def save_preprocessed_dataset(
+        self,
+        dataset_split: DatasetSplit,
+        output_dir: Optional[Path] = None
+    ) -> None:
+        """
+        Save the preprocessed dataset split to disk.
+
+        Creates the following structure:
+        output_dir/
+        ├── train/
+        │   ├── images/
+        │   └── metadata.csv
+        ├── test/
+        │   ├── images/
+        │   └── metadata.csv
+        └── eval/
+            ├── images/
+            └── metadata.csv
+
+        Args:
+            dataset_split: DatasetSplit object containing train/test/eval splits
+            output_dir: Output directory (default: PREPROCESSED_DATASET_DIR from config)
+        """
+        if output_dir is None:
+            output_dir = PREPROCESSED_DATASET_DIR
+
+        self.logger.info(f"Saving preprocessed dataset to {output_dir}...")
+
+        # Create directory structure
+        train_dir = output_dir / "train"
+        test_dir = output_dir / "test"
+        eval_dir = output_dir / "eval"
+
+        train_images_dir = train_dir / "images"
+        test_images_dir = test_dir / "images"
+        eval_images_dir = eval_dir / "images"
+
+        # Create all directories
+        for directory in [train_images_dir, test_images_dir, eval_images_dir]:
+            directory.mkdir(parents=True, exist_ok=True)
+
+        # Save each split
+        splits = {
+            'train': (dataset_split.train, train_dir, train_images_dir),
+            'test': (dataset_split.test, test_dir, test_images_dir),
+            'eval': (dataset_split.eval, eval_dir, eval_images_dir)
+        }
+
+        for split_name, (items, split_dir, images_dir) in splits.items():
+            self.logger.info(f"Saving {split_name} split ({len(items)} items)...")
+
+            # Copy face images to split directory
+            for item in items:
+                source_path = Path(item.Face_Path)
+                if source_path.exists():
+                    dest_path = images_dir / source_path.name
+                    shutil.copy2(source_path, dest_path)
+                else:
+                    self.logger.warning(f"Face image not found: {source_path}")
+
+            # Save metadata CSV
+            metadata_path = split_dir / "metadata.csv"
+            CSVService.save_csv(str(metadata_path), items, FaceCSVItem)
+
+            self.logger.info(f"✓ Saved {split_name}: {len(items)} images + metadata.csv")
+
+        self.logger.info(f"✓ Preprocessed dataset saved to {output_dir}")
