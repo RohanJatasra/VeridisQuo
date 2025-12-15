@@ -275,7 +275,6 @@ class FaceDatasetBuilder:
         # Create metadata as FaceCSVItem
         return FaceCSVItem(
             Face_Path=relative_face_path,
-            Frame_Path=frame_path,
             Video_Path=video_path,
             Label=label,
             Frame_Number=frame_number,
