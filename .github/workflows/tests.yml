@@ -38,9 +38,17 @@ jobs:
           restore-keys: |
             venv-${{ runner.os }}-
 
-      - name: Install dependencies
+      - name: Install dependencies (CPU-only)
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --only main,dev --no-interaction --no-root
+        run: |
+          # Install PyTorch CPU version
+          poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          # Install TensorFlow CPU version
+          poetry run pip install tensorflow-cpu
+          # Install other dependencies
+          poetry install --only main,dev --no-interaction --no-root
+        env:
+          PIP_NO_CACHE_DIR: "1"
 
       - name: Install project
         run: poetry install --only-root
