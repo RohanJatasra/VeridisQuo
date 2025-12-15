@@ -245,7 +245,6 @@ class TestDataSchemas:
         """Test FaceCSVItem dataclass creation."""
         item = FaceCSVItem(
             Face_Path="face_001_00.jpg",
-            Frame_Path="frame_001.jpg",
             Video_Path="test.mp4",
             Label="FAKE",
             Frame_Number=1,
