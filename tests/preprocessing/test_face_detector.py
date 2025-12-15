@@ -2,8 +2,8 @@ import pytest
 import sys
 import os
 import numpy as np
-import cv2
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, patch
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..', 'src'))
 
@@ -21,277 +21,299 @@ face_detector_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(face_detector_module)
 FaceDetector = face_detector_module.FaceDetector
 
+
+def create_mock_yolo_box(x1, y1, x2, y2, confidence):
+    """Helper function to create a mock YOLO box object."""
+    mock_box = Mock()
+    mock_box.xyxy = [Mock()]
+    mock_box.xyxy[0].cpu = Mock(return_value=Mock(numpy=Mock(return_value=np.array([x1, y1, x2, y2]))))
+    mock_box.conf = [confidence]
+    return mock_box
+
+
+def create_mock_yolo_result(boxes_data):
+    """Helper function to create a mock YOLO result object.
+
+    Args:
+        boxes_data: List of tuples (x1, y1, x2, y2, confidence)
+    """
+    mock_result = Mock()
+
+    if boxes_data:
+        mock_result.boxes = [create_mock_yolo_box(*box_data) for box_data in boxes_data]
+    else:
+        mock_result.boxes = []
+
+    return mock_result
+
+
 class TestFaceDetectorInit:
     """Tests for FaceDetector initialization."""
 
-    def test_init_with_custom_parameters(self, mocker):
+    def test_init_with_custom_parameters(self):
         """Test initialization with custom parameters."""
-        mocker.patch('mtcnn.MTCNN')
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
 
-        detector = FaceDetector(
-            min_face_size=20,
-            steps_threshold=[0.5, 0.6, 0.7],
-            scale_factor=0.8,
-            confidence_threshold=0.85,
-            only_keep_top=False
-        )
+                detector = FaceDetector(
+                    model_path="custom/path/model.pt",
+                    min_face_size=20,
+                    confidence_threshold=0.85,
+                    only_keep_top=False
+                )
 
-        assert detector.min_face_size == 20
-        assert detector.steps_threshold == [0.5, 0.6, 0.7]
-        assert detector.scale_factor == 0.8
-        assert detector.confidence_threshold == 0.85
-        assert detector.only_keep_top is False
+                assert detector.min_face_size == 20
+                assert detector.confidence_threshold == 0.85
+                assert detector.only_keep_top is False
+                mock_yolo_class.assert_called_once_with("custom/path/model.pt")
+
+    def test_init_model_not_found(self):
+        """Test initialization fails when model file doesn't exist."""
+        with patch('pathlib.Path.exists', return_value=False):
+            with pytest.raises(FileNotFoundError, match="YOLO model not found"):
+                FaceDetector(model_path="nonexistent/model.pt")
+
 
 class TestFaceDetectorDetectFaces:
     """Tests for FaceDetector.detect_faces() method."""
 
-    def test_detect_single_face(self, mocker):
+    def test_detect_single_face(self):
         """Test detecting a single face returns correct result."""
-        detector = FaceDetector(confidence_threshold=0.9)
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
 
-        detector.detector.detect_faces = mocker.Mock(return_value=[
-            {
-                'box': [100, 100, 150, 150],
-                'confidence': 0.95,
-                'keypoints': {'left_eye': (120, 120), 'right_eye': (140, 120)}
-            }
-        ])
+                # Mock YOLO detection result
+                mock_result = create_mock_yolo_result([(100, 100, 250, 250, 0.95)])
+                mock_yolo_instance.return_value = [mock_result]
 
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-        results = detector.detect_faces(image)
+                detector = FaceDetector(confidence_threshold=0.9)
+                image = np.zeros((480, 640, 3), dtype=np.uint8)
+                results = detector.detect_faces(image)
 
-        assert len(results) == 1
-        assert results[0]['bbox'] == [100, 100, 150, 150]
-        assert results[0]['confidence'] == 0.95
-        assert 'keypoints' not in results[0]
+                assert len(results) == 1
+                assert results[0]['bbox'] == [100, 100, 150, 150]
+                assert results[0]['confidence'] == 0.95
+                assert 'keypoints' not in results[0]
 
-    def test_detect_multiple_faces_keep_all(self, mocker):
+    def test_detect_multiple_faces_keep_all(self):
         """Test detecting multiple faces with only_keep_top=False."""
-        detector = FaceDetector(confidence_threshold=0.9, only_keep_top=False)
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
 
-        detector.detector.detect_faces = mocker.Mock(return_value=[
-            {'box': [100, 100, 150, 150], 'confidence': 0.95, 'keypoints': {}},
-            {'box': [200, 200, 150, 150], 'confidence': 0.92, 'keypoints': {}},
-            {'box': [300, 300, 150, 150], 'confidence': 0.98, 'keypoints': {}}
-        ])
+                mock_result = create_mock_yolo_result([
+                    (100, 100, 250, 250, 0.95),
+                    (200, 200, 350, 350, 0.92),
+                    (300, 300, 450, 450, 0.98)
+                ])
+                mock_yolo_instance.return_value = [mock_result]
 
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-        results = detector.detect_faces(image)
+                detector = FaceDetector(confidence_threshold=0.9, only_keep_top=False)
+                image = np.zeros((480, 640, 3), dtype=np.uint8)
+                results = detector.detect_faces(image)
 
-        assert len(results) == 3
-        # Should be sorted by confidence (descending)
-        assert results[0]['confidence'] == 0.98
-        assert results[1]['confidence'] == 0.95
-        assert results[2]['confidence'] == 0.92
+                assert len(results) == 3
+                assert results[0]['confidence'] == 0.98
+                assert results[1]['confidence'] == 0.95
+                assert results[2]['confidence'] == 0.92
 
-    def test_detect_multiple_faces_keep_top_only(self, mocker):
+    def test_detect_multiple_faces_keep_top_only(self):
         """Test detecting multiple faces with only_keep_top=True keeps highest confidence."""
-        detector = FaceDetector(confidence_threshold=0.9, only_keep_top=True)
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
 
-        detector.detector.detect_faces = mocker.Mock(return_value=[
-            {'box': [100, 100, 150, 150], 'confidence': 0.95, 'keypoints': {}},
-            {'box': [200, 200, 150, 150], 'confidence': 0.92, 'keypoints': {}},
-            {'box': [300, 300, 150, 150], 'confidence': 0.98, 'keypoints': {}}
-        ])
+                mock_result = create_mock_yolo_result([
+                    (100, 100, 250, 250, 0.95),
+                    (200, 200, 350, 350, 0.92),
+                    (300, 300, 450, 450, 0.98)
+                ])
+                mock_yolo_instance.return_value = [mock_result]
 
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-        results = detector.detect_faces(image)
+                detector = FaceDetector(confidence_threshold=0.9, only_keep_top=True)
+                image = np.zeros((480, 640, 3), dtype=np.uint8)
+                results = detector.detect_faces(image)
 
-        assert len(results) == 1
-        assert results[0]['confidence'] == 0.98
-        assert results[0]['bbox'] == [300, 300, 150, 150]
+                assert len(results) == 1
+                assert results[0]['confidence'] == 0.98
+                assert results[0]['bbox'] == [300, 300, 150, 150]
 
-    def test_detect_no_faces(self, mocker):
+    def test_detect_no_faces(self):
         """Test when no faces are detected returns empty list."""
-        detector = FaceDetector()
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
 
-        detector.detector.detect_faces = mocker.Mock(return_value=[])
+                mock_result = create_mock_yolo_result([])
+                mock_yolo_instance.return_value = [mock_result]
 
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-        results = detector.detect_faces(image)
+                detector = FaceDetector()
+                image = np.zeros((480, 640, 3), dtype=np.uint8)
+                results = detector.detect_faces(image)
 
-        assert results == []
+                assert results == []
 
-    def test_detect_faces_below_confidence_threshold(self, mocker):
+    def test_detect_faces_below_confidence_threshold(self):
         """Test faces below confidence threshold are filtered out."""
-        detector = FaceDetector(confidence_threshold=0.9)
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
 
-        detector.detector.detect_faces = mocker.Mock(return_value=[
-            {'box': [100, 100, 150, 150], 'confidence': 0.85, 'keypoints': {}},
-            {'box': [200, 200, 150, 150], 'confidence': 0.88, 'keypoints': {}}
-        ])
+                mock_result = create_mock_yolo_result([
+                    (100, 100, 250, 250, 0.85),
+                    (200, 200, 350, 350, 0.88)
+                ])
+                mock_yolo_instance.return_value = [mock_result]
 
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-        results = detector.detect_faces(image)
+                detector = FaceDetector(confidence_threshold=0.9)
+                image = np.zeros((480, 640, 3), dtype=np.uint8)
+                results = detector.detect_faces(image)
 
-        assert results == []
+                assert results == []
 
-    def test_detect_faces_with_landmarks(self, mocker):
-        """Test detecting faces with return_landmarks=True includes keypoints."""
-        detector = FaceDetector()
+    def test_detect_faces_with_landmarks(self):
+        """Test detecting faces with return_landmarks=True includes empty keypoints dict."""
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
 
-        detector.detector.detect_faces = mocker.Mock(return_value=[
-            {
-                'box': [100, 100, 150, 150],
-                'confidence': 0.95,
-                'keypoints': {
-                    'left_eye': (120, 120),
-                    'right_eye': (140, 120),
-                    'nose': (130, 135),
-                    'mouth_left': (125, 150),
-                    'mouth_right': (135, 150)
-                }
-            }
-        ])
+                mock_result = create_mock_yolo_result([(100, 100, 250, 250, 0.95)])
+                mock_yolo_instance.return_value = [mock_result]
 
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-        results = detector.detect_faces(image, return_landmarks=True)
+                detector = FaceDetector()
+                image = np.zeros((480, 640, 3), dtype=np.uint8)
+                results = detector.detect_faces(image, return_landmarks=True)
 
-        assert len(results) == 1
-        assert 'keypoints' in results[0]
-        assert 'left_eye' in results[0]['keypoints']
-        assert 'right_eye' in results[0]['keypoints']
+                assert len(results) == 1
+                assert 'keypoints' in results[0]
+                assert results[0]['keypoints'] == {}
 
-    def test_detect_faces_mixed_confidence(self, mocker):
+    def test_detect_faces_mixed_confidence(self):
         """Test detecting faces with mixed confidence levels filters correctly."""
-        detector = FaceDetector(confidence_threshold=0.9, only_keep_top=False)
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
 
-        detector.detector.detect_faces = mocker.Mock(return_value=[
-            {'box': [100, 100, 150, 150], 'confidence': 0.85, 'keypoints': {}},
-            {'box': [200, 200, 150, 150], 'confidence': 0.95, 'keypoints': {}},
-            {'box': [300, 300, 150, 150], 'confidence': 0.88, 'keypoints': {}},
-            {'box': [400, 400, 150, 150], 'confidence': 0.92, 'keypoints': {}}
-        ])
+                mock_result = create_mock_yolo_result([
+                    (100, 100, 250, 250, 0.85),
+                    (200, 200, 350, 350, 0.95),
+                    (300, 300, 450, 450, 0.88),
+                    (400, 400, 550, 550, 0.92)
+                ])
+                mock_yolo_instance.return_value = [mock_result]
 
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-        results = detector.detect_faces(image)
+                detector = FaceDetector(confidence_threshold=0.9, only_keep_top=False)
+                image = np.zeros((480, 640, 3), dtype=np.uint8)
+                results = detector.detect_faces(image)
 
-        assert len(results) == 2
-        assert results[0]['confidence'] == 0.95
-        assert results[1]['confidence'] == 0.92
+                assert len(results) == 2
+                assert results[0]['confidence'] == 0.95
+                assert results[1]['confidence'] == 0.92
 
     def test_detect_faces_invalid_image_empty(self):
-        """Test detect_faces with empty array returns empty list."""
-        detector = FaceDetector()
-        empty_image = np.array([])
+        """Test detect_faces with empty array raises ValueError."""
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO'):
+                detector = FaceDetector()
+                empty_image = np.array([])
 
-        results = detector.detect_faces(empty_image)
-        assert results == []
+                with pytest.raises(ValueError, match="Invalid image"):
+                    detector.detect_faces(empty_image)
+
+    def test_detect_faces_min_face_size_filter(self):
+        """Test that faces smaller than min_face_size are filtered out."""
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
+
+                mock_result = create_mock_yolo_result([
+                    (100, 100, 200, 200, 0.95),
+                    (300, 300, 330, 330, 0.98)
+                ])
+                mock_yolo_instance.return_value = [mock_result]
+
+                detector = FaceDetector(min_face_size=40, confidence_threshold=0.7)
+                image = np.zeros((480, 640, 3), dtype=np.uint8)
+                results = detector.detect_faces(image)
+
+                assert len(results) == 1
+                assert results[0]['bbox'] == [100, 100, 100, 100]
+
 
 class TestFaceDetectorDetectSingleFace:
     """Tests for FaceDetector.detect_single_face() method."""
 
-    def test_detect_single_face_found(self, mocker):
+    def test_detect_single_face_found(self):
         """Test detect_single_face returns highest confidence face."""
-        detector = FaceDetector(confidence_threshold=0.9, only_keep_top=False)
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
 
-        detector.detector.detect_faces = mocker.Mock(return_value=[
-            {'box': [100, 100, 150, 150], 'confidence': 0.95, 'keypoints': {}},
-            {'box': [200, 200, 150, 150], 'confidence': 0.92, 'keypoints': {}}
-        ])
+                mock_result = create_mock_yolo_result([
+                    (100, 100, 250, 250, 0.95),
+                    (200, 200, 350, 350, 0.92)
+                ])
+                mock_yolo_instance.return_value = [mock_result]
 
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-        result = detector.detect_single_face(image)
+                detector = FaceDetector(confidence_threshold=0.9, only_keep_top=False)
+                image = np.zeros((480, 640, 3), dtype=np.uint8)
+                result = detector.detect_single_face(image)
 
-        assert result is not None
-        assert result['confidence'] == 0.95
-        assert result['bbox'] == [100, 100, 150, 150]
+                assert result is not None
+                assert result['confidence'] == 0.95
+                assert result['bbox'] == [100, 100, 150, 150]
 
-    def test_detect_single_face_not_found(self, mocker):
+    def test_detect_single_face_not_found(self):
         """Test detect_single_face returns None when no face detected."""
-        detector = FaceDetector()
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
 
-        detector.detector.detect_faces = mocker.Mock(return_value=[])
+                mock_result = create_mock_yolo_result([])
+                mock_yolo_instance.return_value = [mock_result]
 
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-        result = detector.detect_single_face(image)
+                detector = FaceDetector()
+                image = np.zeros((480, 640, 3), dtype=np.uint8)
+                result = detector.detect_single_face(image)
 
-        assert result is None
+                assert result is None
 
-    def test_detect_single_face_with_landmarks(self, mocker):
-        """Test detect_single_face with landmarks."""
-        detector = FaceDetector()
+    def test_detect_single_face_with_landmarks(self):
+        """Test detect_single_face with landmarks returns empty keypoints dict."""
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO') as mock_yolo_class:
+                mock_yolo_instance = Mock()
+                mock_yolo_class.return_value = mock_yolo_instance
 
-        detector.detector.detect_faces = mocker.Mock(return_value=[
-            {
-                'box': [100, 100, 150, 150],
-                'confidence': 0.95,
-                'keypoints': {'left_eye': (120, 120), 'right_eye': (140, 120)}
-            }
-        ])
+                mock_result = create_mock_yolo_result([(100, 100, 250, 250, 0.95)])
+                mock_yolo_instance.return_value = [mock_result]
 
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-        result = detector.detect_single_face(image, return_landmarks=True)
+                detector = FaceDetector()
+                image = np.zeros((480, 640, 3), dtype=np.uint8)
+                result = detector.detect_single_face(image, return_landmarks=True)
 
-        assert result is not None
-        assert 'keypoints' in result
-        assert result['keypoints']['left_eye'] == (120, 120)
+                assert result is not None
+                assert 'keypoints' in result
+                assert result['keypoints'] == {}
 
     def test_detect_single_face_invalid_image(self):
-        """Test detect_single_face with invalid image returns None."""
-        detector = FaceDetector()
+        """Test detect_single_face with invalid image raises ValueError."""
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch.object(face_detector_module, 'YOLO'):
+                detector = FaceDetector()
 
-        result = detector.detect_single_face(None)
-        assert result is None
-
-class TestFaceDetectorForceRGB:
-    """Tests for FaceDetector._force_rgb() method."""
-
-    def test_force_rgb_with_bgr_image(self):
-        """Test _force_rgb converts BGR to RGB."""
-        detector = FaceDetector()
-        # Create BGR image with distinct colors
-        bgr_image = np.zeros((100, 100, 3), dtype=np.uint8)
-        bgr_image[:, :, 0] = 255  # Blue channel
-
-        rgb_image = detector._force_rgb(bgr_image)
-
-        # After conversion, blue should be in the third channel
-        assert rgb_image[:, :, 2][0, 0] == 255
-        assert rgb_image[:, :, 0][0, 0] == 0
-
-    def test_force_rgb_with_grayscale_image(self):
-        """Test _force_rgb with grayscale image returns as-is."""
-        detector = FaceDetector()
-        gray_image = np.ones((100, 100), dtype=np.uint8) * 128
-
-        result = detector._force_rgb(gray_image)
-
-        # Grayscale image should be returned as-is
-        assert result.shape == gray_image.shape
-        assert np.array_equal(result, gray_image)
-
-class TestFaceDetectorFormatInputImage:
-    """Tests for FaceDetector._format_input_image() method."""
-
-    def test_format_valid_rgb_image(self):
-        """Test _format_input_image with valid RGB image."""
-        detector = FaceDetector()
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-
-        result = detector._format_input_image(image)
-
-        assert result is not None
-        assert isinstance(result, np.ndarray)
-
-    def test_format_none_image(self):
-        """Test _format_input_image with None raises ValueError."""
-        detector = FaceDetector()
-
-        with pytest.raises(ValueError, match="Invalid parameters"):
-            detector._format_input_image(None)
-
-    def test_format_empty_image(self):
-        """Test _format_input_image with empty array raises ValueError."""
-        detector = FaceDetector()
-        empty_image = np.array([])
-
-        with pytest.raises(ValueError, match="Invalid parameters"):
-            detector._format_input_image(empty_image)
-
-    def test_format_non_numpy_array(self):
-        """Test _format_input_image with non-numpy array raises ValueError."""
-        detector = FaceDetector()
-
-        with pytest.raises(ValueError, match="Invalid parameters"):
-            detector._format_input_image([1, 2, 3])
+                with pytest.raises(ValueError, match="Invalid image"):
+                    detector.detect_single_face(None)
