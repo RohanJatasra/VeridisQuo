@@ -1,5 +1,5 @@
 import logging
-from data.dataset_builder import DatasetBuilder
+from dataset_builder.dataset_builder import DatasetBuilder
 
 
 if __name__ == "__main__":

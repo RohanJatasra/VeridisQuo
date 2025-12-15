@@ -11,8 +11,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from data.schemas import CSVItem, FrameCSVItem, FaceCSVItem
-from data.face_forensic import FaceForensicDataset
+from dataset_builder.schemas import CSVItem, FrameCSVItem, FaceCSVItem
+from dataset_builder.face_forensic import FaceForensicDataset
 from utils.csv_services import CSVService
 from config import TEST_CSV_FOLDER
 
