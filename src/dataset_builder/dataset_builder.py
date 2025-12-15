@@ -4,11 +4,6 @@ DatasetBuilder module - orchestrates frame and face extraction.
 
 from __future__ import annotations
 
-# Suppress TensorFlow verbose output BEFORE any TF imports
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -18,18 +13,17 @@ import logging
 from multiprocessing import cpu_count
 from typing import Tuple
 
-from data.schemas import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit, PreprocessCSVItem
-from data.face_forensic import FaceForensicDataset
-from data.frame_dataset_builder import FrameDatasetBuilder
-from data.face_dataset_builder import FaceDatasetBuilder
-from data.dataset_balancer import DatasetBalancer
-from data.dataset_splitter import DatasetSplitter
+from dataset_builder.schemas import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit, PreprocessCSVItem
+from dataset_builder.face_forensic import FaceForensicDataset
+from dataset_builder.frame_dataset_builder import FrameDatasetBuilder
+from dataset_builder.face_dataset_builder import FaceDatasetBuilder
+from dataset_builder.dataset_balancer import DatasetBalancer
+from dataset_builder.dataset_splitter import DatasetSplitter
 
 from config import (
     FACES_DIR, FRAME_DIR, DATA_FOLDER, CSV_FOLDER,
     TEST_FACES_DIR, TEST_FRAME_DIR, TEST_DATA_FOLDER, TEST_CSV_FOLDER,
-    PREPROCESSED_DATASET_DIR, TRAIN_PREPROCESSED_DIR,
-    TEST_PREPROCESSED_DIR, EVAL_PREPROCESSED_DIR
+    PREPROCESSED_DATASET_DIR
 )
 from utils.csv_services import CSVService
 import shutil
@@ -69,7 +63,8 @@ class DatasetBuilder:
         self,
         mode: str = 'train',
         num_workers: Optional[int] = None,
-        config: Optional[ProcessingConfig] = None
+        config: Optional[ProcessingConfig] = None,
+        device: str = "cpu"
     ):
         """
         Initialize DatasetBuilder.
@@ -78,6 +73,7 @@ class DatasetBuilder:
             mode: Dataset mode - 'train' or 'test'
             num_workers: Number of parallel workers. Defaults to CPU count.
             config: Processing configuration. Defaults to ProcessingConfig().
+            device: Device to use for face detection (cpu or cuda)
 
         Raises:
             ValueError: If mode is not 'train' or 'test'
@@ -88,6 +84,7 @@ class DatasetBuilder:
         self.mode = mode
         self.num_workers = num_workers if num_workers is not None else cpu_count()
         self.config = config or ProcessingConfig()
+        self.device = device
 
         # Set directories based on mode
         self._setup_directories()
@@ -144,7 +141,8 @@ class DatasetBuilder:
                 only_keep_top_face=self.config.only_keep_top_face,
                 face_target_size=self.config.face_target_size,
                 face_normalization=self.config.face_normalization,
-                face_padding=self.config.face_padding
+                face_padding=self.config.face_padding,
+                device=self.device
             )
         return self._face_builder
 

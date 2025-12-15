@@ -30,7 +30,6 @@ class FrameCSVItem:
 @dataclass
 class FaceCSVItem:
     Face_Path: str
-    Frame_Path: str
     Video_Path: str
     Label: str
     Frame_Number: int

@@ -7,7 +7,7 @@ import logging
 from typing import List, Optional
 from collections import defaultdict
 
-from data.schemas import FaceCSVItem
+from dataset_builder.schemas import FaceCSVItem
 
 
 class DatasetBalancer:

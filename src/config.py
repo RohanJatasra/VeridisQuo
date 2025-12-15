@@ -18,9 +18,9 @@ TEST_FACES_DIR = TEST_DATA_FOLDER / "faces"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 MODEL_DIR = OUTPUT_DIR / "models"
 
+# Face detection model
+FACE_DETECTION_MODEL_PATH = PROJECT_ROOT / "models" / "face_detection" / "face_detection.pt"
+
 # Preprocessed dataset folders (balanced and split)
 PREPROCESSED_DATASET_DIR = PROJECT_ROOT / "data" / "preprocess_dataset"
-TRAIN_PREPROCESSED_DIR = PREPROCESSED_DATASET_DIR / "train"
-TEST_PREPROCESSED_DIR = PREPROCESSED_DATASET_DIR / "test"
-EVAL_PREPROCESSED_DIR = PREPROCESSED_DATASET_DIR / "eval"
 
