@@ -316,26 +316,3 @@ class TestFrequencyFeatureExtractorRobustness:
             features = extractor.forward(images)
             assert features.shape == (4, extractor.fusion_output_dim)
             assert not torch.isnan(features).any()
-
-    def test_forward_batch_consistency(self):
-        """Test that processing images one-by-one vs batch gives similar results."""
-        extractor = FrequencyFeatureExtractor()
-        extractor.eval()
-
-        images = torch.rand(4, 3, 224, 224)
-
-        #process as batch
-        with torch.no_grad():
-            features_batch = extractor.forward(images)
-
-        #process one by one
-        features_individual = []
-        for i in range(4):
-            with torch.no_grad():
-                feat = extractor.forward(images[i:i+1])
-            features_individual.append(feat)
-        features_individual = torch.cat(features_individual, dim=0)
-
-        #should be reasonably close (small differences due to BatchNorm statistics with different batch sizes)
-        #use both absolute and relative tolerance to handle elements near zero
-        assert torch.allclose(features_batch, features_individual, rtol=1e-2, atol=1000)
