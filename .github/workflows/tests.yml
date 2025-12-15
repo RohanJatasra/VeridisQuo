@@ -51,13 +51,8 @@ jobs:
       - name: Install dependencies (CPU-only)
         if: steps.cached-deps.outputs.cache-hit != 'true'
         run: |
-          # Install CPU-only PyTorch FIRST to avoid CUDA dependencies
-          pip install torch==2.5.1+cpu torchvision==0.20.1+cpu --index-url https://download.pytorch.org/whl/cpu
-          # Then install all other dependencies (without ML group, but skip torch reinstall)
-          poetry install --without ml --no-interaction
-        env:
-          # Prevent pip from reinstalling torch with CUDA
-          PIP_NO_DEPS: "0"
+          # Poetry will use CPU-only PyTorch from pytorch-cpu source defined in pyproject.toml
+          poetry install --no-interaction
 
       - name: Run tests
         run: poetry run pytest tests/ -v --tb=short
