@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [ main, spatial, preprocess ]
+    branches: [ main]
   pull_request:
     branches: [main]
 
@@ -29,22 +29,32 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-    - name: Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pypoetry
-        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
-        restore-keys: ${{ runner.os }}-poetry-
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            venv-${{ runner.os }}-
 
-    - name: Check Poetry Lock
-      run: poetry lock --check || poetry lock
+      - name: Install dependencies (CPU-only)
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: |
+          # Install all dependencies except ML group (PyTorch, TensorFlow)
+          poetry install --without ml --no-interaction --no-root
+          # Install CPU-only versions of ML frameworks
+          poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          poetry run pip install tensorflow-cpu
+        env:
+          PIP_NO_CACHE_DIR: "1"
 
-      - name: Install dependencies
-        run: poetry install --only main,dev --no-interaction
+      - name: Install project
+        run: poetry install --only-root
 
-    - name: Run tests
-      run: poetry run pytest tests/ -v --tb=short
-      env:
-        # Désactiver CUDA pour les tests CI (utiliser CPU seulement)
-        CUDA_VISIBLE_DEVICES: ""
+      - name: Run tests
+        run: poetry run pytest tests/ -v --tb=short
+        env:
+          # Désactiver CUDA pour les tests CI (utiliser CPU seulement)
+          CUDA_VISIBLE_DEVICES: ""
 

@@ -150,8 +150,11 @@ class FrameDatasetBuilder:
 
                 extractor.save_frame(frame, frame_path)
 
+                # Create relative path (relative to frame_dir)
+                relative_frame_path = os.path.join(video_name, frame_filename)
+
                 frame_item = FrameCSVItem(
-                    Frame_Path=frame_path,
+                    Frame_Path=relative_frame_path,
                     Video_Path=video_path,
                     Label=video.Label,
                     Width=extractor.width,

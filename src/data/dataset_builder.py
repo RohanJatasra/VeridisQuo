@@ -18,7 +18,7 @@ import logging
 from multiprocessing import cpu_count
 from typing import Tuple
 
-from data.schemas import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit
+from data.schemas import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit, PreprocessCSVItem
 from data.face_forensic import FaceForensicDataset
 from data.frame_dataset_builder import FrameDatasetBuilder
 from data.face_dataset_builder import FaceDatasetBuilder
@@ -279,15 +279,15 @@ class DatasetBuilder:
 
         Creates the following structure:
         output_dir/
+        ├── train.csv
+        ├── test.csv
+        ├── eval.csv
         ├── train/
-        │   ├── images/
-        │   └── metadata.csv
+        │   └── face_001.jpg
         ├── test/
-        │   ├── images/
-        │   └── metadata.csv
+        │   └── face_002.jpg
         └── eval/
-            ├── images/
-            └── metadata.csv
+            └── face_003.jpg
 
         Args:
             dataset_split: DatasetSplit object containing train/test/eval splits
@@ -298,42 +298,63 @@ class DatasetBuilder:
 
         self.logger.info(f"Saving preprocessed dataset to {output_dir}...")
 
-        # Create directory structure
+        # Create base directory
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create split directories (no images subdirectory)
         train_dir = output_dir / "train"
         test_dir = output_dir / "test"
         eval_dir = output_dir / "eval"
 
-        train_images_dir = train_dir / "images"
-        test_images_dir = test_dir / "images"
-        eval_images_dir = eval_dir / "images"
-
-        # Create all directories
-        for directory in [train_images_dir, test_images_dir, eval_images_dir]:
+        for directory in [train_dir, test_dir, eval_dir]:
             directory.mkdir(parents=True, exist_ok=True)
 
         # Save each split
         splits = {
-            'train': (dataset_split.train, train_dir, train_images_dir),
-            'test': (dataset_split.test, test_dir, test_images_dir),
-            'eval': (dataset_split.eval, eval_dir, eval_images_dir)
+            'train': (dataset_split.train, train_dir),
+            'test': (dataset_split.test, test_dir),
+            'eval': (dataset_split.eval, eval_dir)
         }
 
-        for split_name, (items, split_dir, images_dir) in splits.items():
+        for split_name, (items, split_dir) in splits.items():
             self.logger.info(f"Saving {split_name} split ({len(items)} items)...")
 
-            # Copy face images to split directory
+            # Copy face images and update paths to be relative
+            updated_items = []
             for item in items:
-                source_path = Path(item.Face_Path)
+                # Reconstruct absolute path from relative path
+                # item.Face_Path is relative to faces_dir
+                source_path = Path(self.faces_dir) / item.Face_Path
                 if source_path.exists():
-                    dest_path = images_dir / source_path.name
+                    # Copy directly to split directory (no images subdirectory)
+                    dest_path = split_dir / source_path.name
                     shutil.copy2(source_path, dest_path)
+
+                    # Create relative path (relative to output_dir)
+                    relative_path = f"{split_name}/{source_path.name}"
+
+                    # Create updated item with PreprocessCSVItem (simplified schema)
+                    updated_item = PreprocessCSVItem(
+                        Face_Path=relative_path,
+                        Label=item.Label,
+                        Frame_Number=item.Frame_Number,
+                        Dataset=item.Dataset,
+                        Confidence=item.Confidence,
+                        BBox_X=item.BBox_X,
+                        BBox_Y=item.BBox_Y,
+                        BBox_Width=item.BBox_Width,
+                        BBox_Height=item.BBox_Height,
+                        Face_Width=item.Face_Width,
+                        Face_Height=item.Face_Height
+                    )
+                    updated_items.append(updated_item)
                 else:
                     self.logger.warning(f"Face image not found: {source_path}")
 
-            # Save metadata CSV
-            metadata_path = split_dir / "metadata.csv"
-            CSVService.save_csv(str(metadata_path), items, FaceCSVItem)
+            # Save metadata CSV directly in output_dir with split name
+            metadata_path = output_dir / f"{split_name}.csv"
+            CSVService.save_csv(str(metadata_path), updated_items, PreprocessCSVItem)
 
-            self.logger.info(f"✓ Saved {split_name}: {len(items)} images + metadata.csv")
+            self.logger.info(f"✓ Saved {split_name}: {len(updated_items)} images + {split_name}.csv")
 
         self.logger.info(f"✓ Preprocessed dataset saved to {output_dir}")
