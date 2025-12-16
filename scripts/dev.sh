@@ -1,8 +1,8 @@
 #!/bin/bash
-cd "$(dirname "$0")/../src" || exit
+cd "$(dirname "$0")/.." || exit
 
 echo "📦 Installing dependencies..."
-poetry install
+uv sync
 
 echo "🚀 Running the application..."
-poetry run python main.py
+uv run python src/main.py

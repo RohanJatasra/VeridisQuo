@@ -1,14 +1,15 @@
 #!/bin/bash
 
-if ! command -v poetry &> /dev/null; then
-    echo "❌ Poetry is not installed. Please install it first."
+if ! command -v uv &> /dev/null; then
+    echo "❌ uv is not installed. Please install it first."
     exit 1
 fi
 
-poetry check --lock || poetry lock #ensures lock file is up to date
-poetry install --with dev
+cd "$(dirname "$0")/.." || exit
 
-poetry run pytest tests/ -v
+uv sync --extra dev
+
+uv run pytest tests/ -v
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
