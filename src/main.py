@@ -1,6 +1,7 @@
 import logging
 import torch
 from dataset_builder.dataset_builder import DatasetBuilder
+from training.trainer import Trainer
 
 
 if __name__ == "__main__":
@@ -25,5 +26,8 @@ if __name__ == "__main__":
     message = "Hello veridisQuo!"
     print(message)
 
-    builder = DatasetBuilder(mode='test', num_workers=8, device=device)
-    builder.build_complete_dataset(name="test_preprocessed_dataset")
+    # builder = DatasetBuilder(mode='test', num_workers=8, device=device)
+    # builder.build_complete_dataset(name="test_preprocessed_dataset")
+    
+    trainer = Trainer(device=device)
+    
