@@ -170,6 +170,7 @@ class DatasetBuilder:
 
     def build_complete_dataset(
         self,
+        name,
         balance: bool = True,
         balance_method: str = 'oversample',
         split: bool = True,
@@ -254,7 +255,7 @@ class DatasetBuilder:
             # Step 5: Save preprocessed dataset (optional)
             if save_preprocessed:
                 self.logger.info("Step 5/5: Saving preprocessed dataset...")
-                self.save_preprocessed_dataset(dataset_split)
+                self.save_preprocessed_dataset(dataset_split, output_name=name)
                 self.logger.info("✓ Preprocessed dataset saved")
             else:
                 self.logger.info("Step 5/5: Skipping save (save_preprocessed=False)")
@@ -270,7 +271,7 @@ class DatasetBuilder:
     def save_preprocessed_dataset(
         self,
         dataset_split: DatasetSplit,
-        output_dir: Optional[Path] = None
+        output_name : str,
     ) -> None:
         """
         Save the preprocessed dataset split to disk.
@@ -291,8 +292,8 @@ class DatasetBuilder:
             dataset_split: DatasetSplit object containing train/test/eval splits
             output_dir: Output directory (default: PREPROCESSED_DATASET_DIR from config)
         """
-        if output_dir is None:
-            output_dir = PREPROCESSED_DATASET_DIR
+            
+        output_dir = PREPROCESSED_DATASET_DIR / output_name
 
         self.logger.info(f"Saving preprocessed dataset to {output_dir}...")
 

@@ -22,5 +22,5 @@ MODEL_DIR = OUTPUT_DIR / "models"
 FACE_DETECTION_MODEL_PATH = PROJECT_ROOT / "models" / "face_detection" / "face_detection.pt"
 
 # Preprocessed dataset folders (balanced and split)
-PREPROCESSED_DATASET_DIR = PROJECT_ROOT / "data" / "preprocess_dataset"
+PREPROCESSED_DATASET_DIR = PROJECT_ROOT / "data" 
 

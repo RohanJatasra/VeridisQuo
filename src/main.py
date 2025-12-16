@@ -26,4 +26,4 @@ if __name__ == "__main__":
     print(message)
 
     builder = DatasetBuilder(mode='test', num_workers=8, device=device)
-    builder.build_complete_dataset()
+    builder.build_complete_dataset(name="test_preprocessed_dataset")
