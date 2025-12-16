@@ -1,34 +1,36 @@
-[tool.poetry]
+[project]
 name = "VeridisQuo"
 version = "0.1.0"
 description = "Neural network specialised in deepfake detection, notably using EfficientNet and Gradcam."
 authors = [
-    "Clement Barriere <clementbarriere64@gmail.com>",
-    "Theo Castillo <theocastillo@yahoo.com>"
+    {name = "Clement Barriere", email = "clementbarriere64@gmail.com"},
+    {name = "Theo Castillo", email = "theocastillo@yahoo.com"}
 ]
 readme = "README.md"
-packages = [{include = "src"}]
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "numpy>=2.3.2,<3.0.0",
+    "Pillow>=10.0.0,<11.0.0",
+    "opencv-python>=4.8.0,<5.0.0",
+    "pandas>=2.3.3,<3.0.0",
+    "tqdm>=4.66.0,<5.0.0",
+    "ultralytics>=8.0.0,<9.0.0",
+    "setuptools<81.0.0",
+    "torch>=2.2.0",
+    "torchvision>=0.15.2,<1.0.0",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.12,<3.14"
-numpy = ">=2.3.2,<3.0.0"
-Pillow = ">=10.0.0,<11.0.0"
-opencv-python = ">=4.8.0,<5.0.0"
-pandas = ">=2.3.3,<3.0.0"
-tqdm = ">=4.66.0,<5.0.0"
-ultralytics = ">=8.0.0,<9.0.0"
-setuptools = "<81.0.0"
-torch = ">=2.2.0"
-torchvision = ">=0.15.2,<1.0.0"
-
-[tool.poetry.group.dev.dependencies]
-pytest = ">=8.0.0,<9.0.0"
-pytest-cov = ">=6.0.0,<7.0.0"
-pytest-xdist = ">=3.0.0,<4.0.0"
-pytest-mock = ">=3.14.0,<4.0.0"
-
-
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0,<9.0.0",
+    "pytest-cov>=6.0.0,<7.0.0",
+    "pytest-xdist>=3.0.0,<4.0.0",
+    "pytest-mock>=3.14.0,<4.0.0",
+]
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

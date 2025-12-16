@@ -4,20 +4,31 @@ Veridis Quo is a neural network designed to **detect deepfake videos** and **hig
 
 TODO...
 
+## Prerequisites
+
+Install [uv](https://docs.astral.sh/uv/):
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# OR
+pip install uv
+```
+
 ## Launch
 
 ```bash
 ./scripts/dev.sh
-#OR
-cd veridisquo/src
-poetry install
-poetry run python main.py
+# OR
+uv sync
+uv run python src/main.py
 ```
 
 ## Tests
 
 ```bash
 ./scripts/run_tests.sh
+# OR
+uv sync --extra dev
+uv run pytest tests/ -v
 ```
 
 ## Project Structure
