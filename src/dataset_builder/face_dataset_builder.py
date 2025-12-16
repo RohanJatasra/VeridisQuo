@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from preprocessing.face_detector import FaceDetector
 from preprocessing.face_extractor import FaceExtractor
-from dataset_builder.schemas import FrameCSVItem, FaceCSVItem
+from core.schemas import FrameCSVItem, FaceCSVItem
 from utils.csv_services import CSVService
 
 

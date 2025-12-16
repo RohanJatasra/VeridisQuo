@@ -13,7 +13,7 @@ from functools import partial
 from tqdm import tqdm
 
 from preprocessing.frames_extractor import FramesExtractor
-from dataset_builder.schemas import CSVItem, FrameCSVItem
+from core.schemas import CSVItem, FrameCSVItem
 from utils.csv_services import CSVService
 
 
