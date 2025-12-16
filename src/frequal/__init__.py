@@ -9,7 +9,7 @@ from .base_dct_extractor import BaseDCTExtractor
 from .fusion_mlp import FusionMLP
 
 __version__ = "0.1.0"
-__author__ = "Clément BARRIÈRE (@B-a-r-r)"
+__author__ = "Clément BARRIÈRE (@clembarr)"
 
 __all__ = [
     "FrequencyFeatureExtractor",
