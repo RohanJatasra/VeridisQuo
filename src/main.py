@@ -29,8 +29,11 @@ if __name__ == "__main__":
     message = "Hello veridisQuo!"
     print(message)
 
-    builder = DatasetBuilder(mode='test', num_workers=8, device=device)
-    builder.build_complete_dataset(name="test_preprocessed_dataset")
+    # builder = DatasetBuilder(mode='test', num_workers=8, device=device)
+    # builder.build_complete_dataset(name="test_preprocessed_dataset")
+    
+    builder = DatasetBuilder(mode='train', num_workers=8, device=device)
+    builder.build_complete_dataset(name="preprocessed_dataset")
     
     # trainer = Trainer(device=device)
     
