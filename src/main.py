@@ -1,10 +1,13 @@
 import logging
 import torch
+import multiprocessing
 from dataset_builder.dataset_builder import DatasetBuilder
 from training.trainer import Trainer
 
 
 if __name__ == "__main__":
+    # Set multiprocessing start method to 'spawn' for CUDA compatibility
+    multiprocessing.set_start_method('spawn', force=True)
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,

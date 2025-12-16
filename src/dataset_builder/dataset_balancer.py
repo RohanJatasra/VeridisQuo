@@ -67,6 +67,14 @@ class DatasetBalancer:
 
         self.logger.info(f"Before balancing: FAKE={fake_count}, REAL={real_count}")
 
+        # Check if one class is empty
+        if fake_count == 0 or real_count == 0:
+            self.logger.warning(
+                f"Cannot balance dataset: one class is empty (FAKE={fake_count}, REAL={real_count}). "
+                "Returning original dataset without balancing."
+            )
+            return faces_data
+
         if fake_count == real_count:
             self.logger.info("Dataset already balanced")
             return faces_data

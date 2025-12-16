@@ -83,6 +83,8 @@ class FramesExtractor:
         """
         frame_count = 0
         extracted_count = 0
+        consecutive_failures = 0
+        max_consecutive_failures = 10  # Stop if too many consecutive frames fail
 
         try:
             #reset video to beginning
@@ -94,11 +96,18 @@ class FramesExtractor:
                     extracted = self.get_frame_at(frame_count)
 
                     if extracted is None:
-                        self.logger.info(f"- extract_frames - reached end of video at frame {frame_count}.")
-                        break
+                        consecutive_failures += 1
+                        if consecutive_failures >= max_consecutive_failures:
+                            self.logger.warning(
+                                f"- extract_frames - too many consecutive failures ({consecutive_failures}), "
+                                f"stopping at frame {frame_count}."
+                            )
+                            break
+                        frame_count += 1
+                        continue
 
+                    consecutive_failures = 0
                     yield extracted
-
                     extracted_count += 1
 
                 frame_count += 1

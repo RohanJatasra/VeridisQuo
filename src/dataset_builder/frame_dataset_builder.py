@@ -92,7 +92,7 @@ class FrameDatasetBuilder:
         self,
         videos: List[Tuple[str, CSVItem]]
     ) -> List[FrameCSVItem]:
-        """Process videos in parallel to extract frames."""
+        """Process videos in parallel to extract frames with timeout."""
         process_func = partial(
             self._process_single_video,
             data_folder=str(self.data_folder),
@@ -100,13 +100,31 @@ class FrameDatasetBuilder:
             fps=self.fps
         )
 
+        timeout_seconds = 30  # Timeout per video
+
         with Pool(processes=self.num_workers) as pool:
-            results = list(tqdm(
-                pool.imap(process_func, videos),
-                total=len(videos),
-                desc="Extracting frames",
-                unit="video"
-            ))
+            # Submit all tasks asynchronously
+            async_results = []
+            for video in videos:
+                async_result = pool.apply_async(process_func, (video,))
+                async_results.append((async_result, video))
+
+            # Collect results with timeout and progress bar
+            results = []
+            with tqdm(total=len(videos), desc="Extracting frames", unit="video") as pbar:
+                for async_result, video_data in async_results:
+                    _, video = video_data
+                    try:
+                        # Wait for result with timeout
+                        result = async_result.get(timeout=timeout_seconds)
+                        results.append(result)
+                        pbar.update(1)
+                    except Exception as e:
+                        self.logger.error(
+                            f"Timeout or error processing video {video.File_Path}: {str(e)}"
+                        )
+                        pbar.update(1)
+                        results.append([])  # Empty result for failed video
 
         # Flatten results
         return [frame for video_frames in results for frame in video_frames]
@@ -134,17 +152,27 @@ class FrameDatasetBuilder:
         video_path = video.File_Path
         video_name = os.path.splitext(os.path.basename(video_path))[0]
         complete_video_path = os.path.join(data_folder, video_path)
+        logger = logging.getLogger("FrameDatasetBuilder.Worker")
 
         if not os.path.exists(complete_video_path):
+            logger.warning(f"Video file not found: {complete_video_path}")
             return []
 
+        extractor = None
         try:
             extractor = FramesExtractor(complete_video_path, nb_fps=fps)
             output_dir = os.path.join(frame_dir, video_name)
             os.makedirs(output_dir, exist_ok=True)
 
             frames_data = []
+            frame_count = 0
+            max_frames = 1000  # Safety limit to prevent infinite loops
+
             for frame, metadata in extractor.extract_frames():
+                if frame_count >= max_frames:
+                    logger.warning(f"Reached max frame limit ({max_frames}) for {video_path}")
+                    break
+
                 frame_filename = f"frame_{metadata['frame_number']:06d}.jpg"
                 frame_path = os.path.join(output_dir, frame_filename)
 
@@ -164,13 +192,21 @@ class FrameDatasetBuilder:
                     Dataset=csv_name.replace('.csv', '')
                 )
                 frames_data.append(frame_item)
+                frame_count += 1
 
+            logger.debug(f"Successfully processed {video_path}: {len(frames_data)} frames")
             return frames_data
 
         except Exception as e:
-            logger = logging.getLogger("FrameDatasetBuilder.Worker")
             logger.error(f"Error processing video {video_path}: {str(e)}")
             return []
+        finally:
+            # Ensure video capture is released
+            if extractor is not None and hasattr(extractor, '_video_props'):
+                try:
+                    extractor._video_props.release()
+                except:
+                    pass
 
     def _save_metadata(self, csv_data: List[FrameCSVItem]) -> None:
         """Save frame extraction metadata to CSV file."""
