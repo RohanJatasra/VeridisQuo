@@ -13,7 +13,7 @@ import logging
 from multiprocessing import cpu_count
 from typing import Tuple
 
-from dataset_builder.schemas import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit, PreprocessCSVItem
+from core.schemas import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit, PreprocessCSVItem
 from dataset_builder.face_forensic import FaceForensicDataset
 from dataset_builder.frame_dataset_builder import FrameDatasetBuilder
 from dataset_builder.face_dataset_builder import FaceDatasetBuilder
