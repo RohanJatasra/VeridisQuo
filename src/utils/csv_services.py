@@ -164,6 +164,9 @@ class CSVService:
         Raises:
             ValueError: If items list is empty or items don't match schema
         """
+        # Ensure parent directory exists
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+
         if not items:
             # Create empty CSV with headers
             field_names = [f.name for f in fields(schema)]
