@@ -124,7 +124,10 @@ class DatasetBuilder:
                 frame_dir=self.frame_dir,
                 videos_path=self.videos_path,
                 num_workers=self.num_workers,
-                fps=self.config.frames_per_second
+                fps=self.config.frames_per_second,
+                device=self.device,
+                batch_size=32,
+                num_save_threads=4
             )
         return self._frame_builder
 
