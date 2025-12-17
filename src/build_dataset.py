@@ -18,9 +18,9 @@ if __name__ == "__main__":
 
     device = get_device()
 
-    # builder = DatasetBuilder(mode='test', num_workers=8, device=device)
-    # builder.build_complete_dataset(name="test_preprocessed_dataset")
+    builder = DatasetBuilder(mode='test', num_workers=8, device=device)
+    builder.build_complete_dataset(name="test_preprocessed_dataset")
     
-    builder = DatasetBuilder(mode='train', num_workers=8, device=device)
-    builder.build_complete_dataset(name="preprocessed_dataset")
+    # builder = DatasetBuilder(mode='train', num_workers=8, device=device)
+    # builder.build_complete_dataset(name="preprocessed_dataset")
     

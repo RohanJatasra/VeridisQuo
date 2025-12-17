@@ -1,8 +1,8 @@
 from torch import nn
 import torch
 
-from spatial.efficient_net import EfficientNetB4Backbone
-from frequal.fequency_feature_extractor import FrequencyFeatureExtractor
+from spatial.efficient_net import EfficientNetFeatureExtractor
+from frequal.frequency_feature_extractor import FrequencyFeatureExtractor
 from classification.face_features_concatenator import FaceFeaturesConcatenator
 from classification.face_classifier import FaceClassifier
 
@@ -10,7 +10,7 @@ from classification.face_classifier import FaceClassifier
 class DeepFakeDetector(nn.Module):
     def __init__(self):
         super(DeepFakeDetector, self).__init__()
-        self.efficient = EfficientNetB4Backbone(pretrained=True)
+        self.efficient = EfficientNetFeatureExtractor(pretrained=True)
         self.frequal_extractor = FrequencyFeatureExtractor()
         
         self.concatenator = FaceFeaturesConcatenator()
