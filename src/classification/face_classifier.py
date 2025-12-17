@@ -148,6 +148,7 @@ class FaceClassifier(nn.Module):
         self.logger.debug(f"- predict_proba - Computed probabilities with shape {probabilities.shape}")
 
         return probabilities
+    
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
         """Predict class labels (argmax).
