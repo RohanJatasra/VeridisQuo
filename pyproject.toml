@@ -19,6 +19,7 @@ dependencies = [
     "torch>=2.2.0",
     "torchvision>=0.15.2,<1.0.0",
     "wandb>=0.23.1",
+    "dotenv>=0.9.9",
 ]
 
 [project.optional-dependencies]
