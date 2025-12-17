@@ -4,6 +4,8 @@ from dataset_builder.dataset_builder import DatasetBuilder
 from training.trainer import Trainer
 from dotenv import load_dotenv, find_dotenv
 from utils.device import get_device
+from core.model import DeepFakeDetector
+from torchsummary import summary
 
 load_dotenv(find_dotenv())
 
@@ -22,4 +24,8 @@ if __name__ == "__main__":
     
     # trainer = Trainer(device=device)
     # trainer.train()
+    
+    model = DeepFakeDetector().to(device)
+    summary(model, (3,224,224))
+    
     
