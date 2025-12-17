@@ -1,14 +1,18 @@
 from data.dataset import Dataset
 
 import torch
+import logging
+
 
 class DataLoader:
-    def __init__(self,dataset : Dataset, batch_size : int = 32 , shuffle : bool = True, device : torch.device = torch.device("cpu")):
+    def __init__(self,dataset : Dataset, batch_size : int = 32 , shuffle : bool = True, device : torch.device = torch.device("cpu"), verbose : bool = True):
         self.dataset = dataset
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.device = device
         self.current_index = 0
+        
+        self.logger = logging.getLogger("DataLoader")
         
         if self.shuffle:
             from random import shuffle
@@ -17,6 +21,7 @@ class DataLoader:
             
     def __len__(self):
         return (len(self.dataset) + self.batch_size - 1) // self.batch_size
+    
             
     def __iter__(self):
         self.current_index = 0

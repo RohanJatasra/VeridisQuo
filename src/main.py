@@ -2,9 +2,14 @@ import logging
 import torch
 from dataset_builder.dataset_builder import DatasetBuilder
 from training.trainer import Trainer
+from dotenv import load_dotenv, find_dotenv
 
+load_dotenv(find_dotenv())
 
 if __name__ == "__main__":
+    
+    
+    
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
