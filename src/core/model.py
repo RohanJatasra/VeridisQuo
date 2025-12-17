@@ -14,16 +14,16 @@ class DeepFakeDetector(nn.Module):
         self.frequal_extractor = FrequencyFeatureExtractor()
         
         self.concatenator = FaceFeaturesConcatenator()
-        self.classifier = FaceClassifier()
+        self.classifier = FaceClassifier(input_dim=2816)
         
         
         
     def forward(self, x_image : torch.Tensor):
         assert x_image.shape[1:] == (3,224,224), "Input image must have shape (3, 224, 224)"
-        
-        spatial_features = self.efficient(x_image)
+
+        _, spatial_features = self.efficient(x_image)
         frequency_features = self.frequal_extractor(x_image)
         combined_features = self.concatenator(spatial_features, frequency_features)
         output = self.classifier(combined_features)
-        
+
         return output
