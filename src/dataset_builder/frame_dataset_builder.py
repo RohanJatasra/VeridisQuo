@@ -207,7 +207,10 @@ class FrameDatasetBuilder:
         """
         csv_name, video = video_data
         video_path = video.File_Path
-        video_name = os.path.splitext(os.path.basename(video_path))[0]
+        video_basename = os.path.splitext(os.path.basename(video_path))[0]
+        # Prefix with dataset name to avoid collisions when same video name exists in different folders
+        dataset_prefix = csv_name.replace('.csv', '')
+        video_name = f"{dataset_prefix}_{video_basename}"
         complete_video_path = os.path.join(data_folder, video_path)
 
         if not os.path.exists(complete_video_path):
@@ -277,7 +280,10 @@ class FrameDatasetBuilder:
 
         csv_name, video = video_data
         video_path = video.File_Path
-        video_name = os.path.splitext(os.path.basename(video_path))[0]
+        video_basename = os.path.splitext(os.path.basename(video_path))[0]
+        # Prefix with dataset name to avoid collisions when same video name exists in different folders
+        dataset_prefix = csv_name.replace('.csv', '')
+        video_name = f"{dataset_prefix}_{video_basename}"
         complete_video_path = os.path.join(data_folder, video_path)
 
         if not os.path.exists(complete_video_path):
