@@ -24,17 +24,24 @@ class TrainingConfig:
     # Device
     device: torch.device = field(default_factory=lambda: torch.device("cpu"))
 
-    # Data paths
-    train_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "train.csv")
-    test_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "test.csv")
-    eval_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "eval.csv")
+    # # Data paths
+    # train_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "train.csv")
+    # test_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "test.csv")
+    # eval_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "eval.csv")
+    
+    train_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "train.csv")
+    test_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "test.csv")
+    eval_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "eval.csv")
 
     # Training hyperparameters
-    batch_size: int = 32
+    batch_size: int = 1
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
-    num_epochs: int = 50
+    num_epochs: int = 2
     num_workers: int = 4
+    
+    # utils
+    compile_model: bool = True
 
     # Logging
     log_interval: int = 10
@@ -119,6 +126,11 @@ class Trainer:
         # Initialize model
         self.logger.info("Initializing model...")
         self.model = DeepFakeDetector().to(self.device)
+        
+        if self.config.compile_model:
+            self.logger.info("Compiling model for optimized performance...")
+            self.model = torch.compile(self.model)
+            self.logger.info("Model compilation complete.")
 
         # Loss and optimizer
         self.criterion = nn.CrossEntropyLoss()
@@ -134,7 +146,6 @@ class Trainer:
             mode='min',
             factor=0.5,
             patience=5,
-            verbose=True
         )
 
         # Training state
