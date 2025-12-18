@@ -18,20 +18,31 @@ from core.model import DeepFakeDetector
 from config import PROJECT_ROOT, MODEL_DIR
 
 
+
+@dataclass
+class DatasetConfig:
+    """Configuration for datasets."""
+    train_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "train.csv")
+    test_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "test.csv")
+    eval_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "eval.csv")
+    
+@dataclass
+class TestDatasetConfig:
+    """Configuration for test datasets."""
+    train_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "train.csv")
+    test_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "test.csv")
+    eval_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "eval.csv")
+
+
 @dataclass
 class TrainingConfig:
     """Configuration for training."""
     # Device
     device: torch.device = field(default_factory=lambda: torch.device("cpu"))
-
-    # # Data paths
-    # train_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "train.csv")
-    # test_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "test.csv")
-    # eval_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "eval.csv")
+    test : bool = False
     
-    train_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "train.csv")
-    test_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "test.csv")
-    eval_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "eval.csv")
+    # Dataset paths
+    dataset_config: DatasetConfig = DatasetConfig() if not test else TestDatasetConfig()
 
     # Training hyperparameters
     batch_size: int = 1
@@ -87,15 +98,15 @@ class Trainer:
         # Load datasets
         self.logger.info("Loading datasets...")
         self.train_dataset = FaceDataset(
-            csv_path=self.config.train_csv,
+            csv_path=self.config.dataset_config.train_csv,
             augment=True
         )
         self.test_dataset = FaceDataset(
-            csv_path=self.config.test_csv,
+            csv_path=self.config.dataset_config.test_csv,
             augment=False
         )
         self.eval_dataset = FaceDataset(
-            csv_path=self.config.eval_csv,
+            csv_path=self.config.dataset_config.eval_csv,
             augment=False
         )
 
