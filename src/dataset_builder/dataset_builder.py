@@ -323,17 +323,31 @@ class DatasetBuilder:
 
             # Copy face images and update paths to be relative
             updated_items = []
+            # Track filename usage to handle duplicates from oversampling
+            filename_counter: Dict[str, int] = {}
+
             for item in items:
                 # Reconstruct absolute path from relative path
                 # item.Face_Path is relative to faces_dir
                 source_path = Path(self.faces_dir) / item.Face_Path
                 if source_path.exists():
-                    # Copy directly to split directory (no images subdirectory)
-                    dest_path = split_dir / source_path.name
+                    # Generate unique filename to handle duplicates
+                    base_name = source_path.stem
+                    extension = source_path.suffix
+
+                    if base_name not in filename_counter:
+                        filename_counter[base_name] = 0
+                        unique_filename = f"{base_name}{extension}"
+                    else:
+                        filename_counter[base_name] += 1
+                        unique_filename = f"{base_name}_{filename_counter[base_name]}{extension}"
+
+                    # Copy with unique filename
+                    dest_path = split_dir / unique_filename
                     shutil.copy2(source_path, dest_path)
 
                     # Create relative path (relative to output_dir)
-                    relative_path = f"{split_name}/{source_path.name}"
+                    relative_path = f"{split_name}/{unique_filename}"
 
                     # Create updated item with PreprocessCSVItem (simplified schema)
                     updated_item = PreprocessCSVItem(
@@ -359,4 +373,58 @@ class DatasetBuilder:
 
             self.logger.info(f"✓ Saved {split_name}: {len(updated_items)} images + {split_name}.csv")
 
+        # Validate dataset integrity
+        self._validate_dataset_integrity(output_dir)
+
         self.logger.info(f"✓ Preprocessed dataset saved to {output_dir}")
+
+    def _validate_dataset_integrity(self, output_dir: Path) -> None:
+        """
+        Validate that CSV entries match the actual files in each split directory.
+
+        Args:
+            output_dir: Path to the preprocessed dataset directory
+
+        Raises:
+            ValueError: If any split has mismatched counts between CSV and files
+        """
+        self.logger.info("Validating dataset integrity...")
+
+        splits = ['train', 'test', 'eval']
+        validation_errors = []
+
+        for split_name in splits:
+            csv_path = output_dir / f"{split_name}.csv"
+            split_dir = output_dir / split_name
+
+            # Load CSV entries using CSVService
+            csv_items: List[PreprocessCSVItem] = []
+            if csv_path.exists():
+                csv_items = CSVService.load_csv(str(csv_path), PreprocessCSVItem)
+            csv_count = len(csv_items)
+
+            # Count image files in directory
+            file_count = 0
+            if split_dir.exists():
+                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
+                file_count = sum(
+                    1 for f in split_dir.iterdir()
+                    if f.is_file() and f.suffix.lower() in image_extensions
+                )
+
+            # Compare counts
+            if csv_count == file_count:
+                self.logger.info(
+                    f"✓ {split_name}: {csv_count} CSV entries = {file_count} files"
+                )
+            else:
+                error_msg = (
+                    f"✗ {split_name}: mismatch - {csv_count} CSV entries vs {file_count} files"
+                )
+                self.logger.error(error_msg)
+                validation_errors.append(error_msg)
+
+        if validation_errors:
+            raise ValueError(
+                f"Dataset integrity validation failed:\n" + "\n".join(validation_errors)
+            )
