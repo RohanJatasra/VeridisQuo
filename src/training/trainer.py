@@ -6,9 +6,10 @@ import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Union
 from pathlib import Path
 import logging
+from datetime import datetime
 from tqdm import tqdm
 import wandb
 
@@ -18,20 +19,31 @@ from core.model import DeepFakeDetector
 from config import PROJECT_ROOT, MODEL_DIR
 
 
+
+@dataclass
+class DatasetConfig:
+    """Configuration for datasets."""
+    train_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "train.csv")
+    test_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "test.csv")
+    eval_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "eval.csv")
+    
+@dataclass
+class TestDatasetConfig:
+    """Configuration for test datasets."""
+    train_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "train.csv")
+    test_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "test.csv")
+    eval_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "eval.csv")
+
+
 @dataclass
 class TrainingConfig:
     """Configuration for training."""
     # Device
     device: torch.device = field(default_factory=lambda: torch.device("cpu"))
+    test: bool = True
 
-    # # Data paths
-    # train_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "train.csv")
-    # test_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "test.csv")
-    # eval_csv: str = str(PROJECT_ROOT / "data" / "preprocessed_dataset" / "eval.csv")
-    
-    train_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "train.csv")
-    test_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "test.csv")
-    eval_csv: str = str(PROJECT_ROOT / "data" / "test_preprocessed_dataset" / "eval.csv")
+    # Dataset paths (set in __post_init__ based on test flag)
+    dataset_config: Optional[Union[DatasetConfig, TestDatasetConfig]] = None
 
     # Training hyperparameters
     batch_size: int = 1
@@ -39,7 +51,7 @@ class TrainingConfig:
     weight_decay: float = 1e-5
     num_epochs: int = 2
     num_workers: int = 4
-    
+
     # utils
     compile_model: bool = True
 
@@ -58,7 +70,11 @@ class TrainingConfig:
     # Wandb
     wandb_project: str = "deepfake-detector"
     wandb_entity: Optional[str] = None
-    use_wandb: bool = True
+    use_wandb: bool = False
+
+    def __post_init__(self):
+        if self.dataset_config is None:
+            self.dataset_config = TestDatasetConfig() if self.test else DatasetConfig()
 
 
 class Trainer:
@@ -87,15 +103,15 @@ class Trainer:
         # Load datasets
         self.logger.info("Loading datasets...")
         self.train_dataset = FaceDataset(
-            csv_path=self.config.train_csv,
+            csv_path=self.config.dataset_config.train_csv,
             augment=True
         )
         self.test_dataset = FaceDataset(
-            csv_path=self.config.test_csv,
+            csv_path=self.config.dataset_config.test_csv,
             augment=False
         )
         self.eval_dataset = FaceDataset(
-            csv_path=self.config.eval_csv,
+            csv_path=self.config.dataset_config.eval_csv,
             augment=False
         )
 
@@ -171,9 +187,11 @@ class Trainer:
 
     def _init_wandb(self) -> None:
         """Initialize Weights & Biases logging."""
+        run_name = f"veridisquo-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         self.wandb_run = wandb.init(
             entity=self.config.wandb_entity,
             project=self.config.wandb_project,
+            name=run_name,
             config={
                 "learning_rate": self.config.learning_rate,
                 "batch_size": self.config.batch_size,
@@ -182,7 +200,7 @@ class Trainer:
                 "architecture": "DeepFakeDetector",
                 "optimizer": "AdamW",
             },
-            reinit=True
+            reinit="finish_previous"
         )
         self.logger.info(f"Wandb initialized: {self.wandb_run.name}")
 
