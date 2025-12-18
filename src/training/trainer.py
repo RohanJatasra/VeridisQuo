@@ -6,9 +6,10 @@ import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Union
 from pathlib import Path
 import logging
+from datetime import datetime
 from tqdm import tqdm
 import wandb
 
@@ -39,10 +40,10 @@ class TrainingConfig:
     """Configuration for training."""
     # Device
     device: torch.device = field(default_factory=lambda: torch.device("cpu"))
-    test : bool = False
-    
-    # Dataset paths
-    dataset_config: DatasetConfig = DatasetConfig() if not test else TestDatasetConfig()
+    test: bool = True
+
+    # Dataset paths (set in __post_init__ based on test flag)
+    dataset_config: Optional[Union[DatasetConfig, TestDatasetConfig]] = None
 
     # Training hyperparameters
     batch_size: int = 1
@@ -50,7 +51,7 @@ class TrainingConfig:
     weight_decay: float = 1e-5
     num_epochs: int = 2
     num_workers: int = 4
-    
+
     # utils
     compile_model: bool = True
 
@@ -69,7 +70,11 @@ class TrainingConfig:
     # Wandb
     wandb_project: str = "deepfake-detector"
     wandb_entity: Optional[str] = None
-    use_wandb: bool = True
+    use_wandb: bool = False
+
+    def __post_init__(self):
+        if self.dataset_config is None:
+            self.dataset_config = TestDatasetConfig() if self.test else DatasetConfig()
 
 
 class Trainer:
@@ -182,9 +187,11 @@ class Trainer:
 
     def _init_wandb(self) -> None:
         """Initialize Weights & Biases logging."""
+        run_name = f"veridisquo-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         self.wandb_run = wandb.init(
             entity=self.config.wandb_entity,
             project=self.config.wandb_project,
+            name=run_name,
             config={
                 "learning_rate": self.config.learning_rate,
                 "batch_size": self.config.batch_size,
@@ -193,7 +200,7 @@ class Trainer:
                 "architecture": "DeepFakeDetector",
                 "optimizer": "AdamW",
             },
-            reinit=True
+            reinit="finish_previous"
         )
         self.logger.info(f"Wandb initialized: {self.wandb_run.name}")
 
