@@ -116,26 +116,20 @@ class FaceDatasetBuilder:
         self,
         frames_data: List[FrameCSVItem]
     ) -> Tuple[List[FaceCSVItem], Dict[str, int]]:
-        """Process frames in parallel to extract faces."""
-        process_func = partial(
-            self._process_single_frame,
-            faces_dir=str(self.faces_dir),
-            min_face_size=self.min_face_size,
-            confidence_threshold=self.confidence_threshold,
-            only_keep_top_face=self.only_keep_top_face,
-            face_target_size=self.face_target_size,
-            face_normalization=self.face_normalization,
-            face_padding=self.face_padding,
-            device=self.device
-        )
+        """
+        Process frames to extract faces.
 
-        with Pool(processes=self.num_workers) as pool:
-            results = list(tqdm(
-                pool.imap(process_func, frames_data),
-                total=len(frames_data),
-                desc="Extracting faces",
-                unit="frame"
-            ))
+        Uses sequential processing for CUDA (GPU already parallelizes),
+        multiprocessing for CPU.
+        """
+        if self.device == "cuda":
+            # GPU: sequential processing (GPU is already massively parallel)
+            self.logger.info("Using sequential processing with GPU acceleration")
+            results = self._sequential_process_frames(frames_data)
+        else:
+            # CPU: multiprocessing for parallelization
+            self.logger.info(f"Using multiprocessing with {self.num_workers} workers")
+            results = self._multiprocess_frames(frames_data)
 
         # Flatten results and calculate stats
         faces_csv_data = []
@@ -155,6 +149,139 @@ class FaceDatasetBuilder:
         }
 
         return faces_csv_data, stats
+
+    def _sequential_process_frames(
+        self,
+        frames_data: List[FrameCSVItem]
+    ) -> List[List[FaceCSVItem]]:
+        """
+        Process frames sequentially (for GPU).
+
+        Initializes detectors once and reuses them for all frames.
+        """
+        # Initialize detectors ONCE (this is the key optimization for GPU)
+        self.logger.info("Initializing face detector and extractor...")
+        face_detector = FaceDetector(
+            min_face_size=self.min_face_size,
+            confidence_threshold=self.confidence_threshold,
+            only_keep_top=self.only_keep_top_face,
+            device=self.device
+        )
+        face_extractor = FaceExtractor(
+            target_size=self.face_target_size,
+            normalization=self.face_normalization,
+            padding=self.face_padding
+        )
+
+        # Process all frames with the same detector instances
+        results = []
+        for frame_data in tqdm(
+            frames_data,
+            desc="Extracting faces (GPU)",
+            unit="frame"
+        ):
+            result = self._process_single_frame_with_detectors(
+                frame_data,
+                face_detector,
+                face_extractor
+            )
+            results.append(result)
+
+        return results
+
+    def _multiprocess_frames(
+        self,
+        frames_data: List[FrameCSVItem]
+    ) -> List[List[FaceCSVItem]]:
+        """Process frames in parallel using multiprocessing (for CPU)."""
+        process_func = partial(
+            self._process_single_frame,
+            faces_dir=str(self.faces_dir),
+            min_face_size=self.min_face_size,
+            confidence_threshold=self.confidence_threshold,
+            only_keep_top_face=self.only_keep_top_face,
+            face_target_size=self.face_target_size,
+            face_normalization=self.face_normalization,
+            face_padding=self.face_padding,
+            device=self.device
+        )
+
+        with Pool(processes=self.num_workers) as pool:
+            results = list(tqdm(
+                pool.imap(process_func, frames_data),
+                total=len(frames_data),
+                desc="Extracting faces (CPU)",
+                unit="frame"
+            ))
+
+        return results
+
+    def _process_single_frame_with_detectors(
+        self,
+        frame_data: FrameCSVItem,
+        face_detector: FaceDetector,
+        face_extractor: FaceExtractor
+    ) -> List[FaceCSVItem]:
+        """
+        Process a single frame using pre-initialized detectors.
+
+        This method is used for GPU processing where we want to reuse
+        the same detector instances across all frames.
+
+        Args:
+            frame_data: FrameCSVItem containing frame metadata
+            face_detector: Pre-initialized FaceDetector instance
+            face_extractor: Pre-initialized FaceExtractor instance
+
+        Returns:
+            List of FaceCSVItem instances
+        """
+        # Reconstruct absolute path from relative path
+        frame_dir = os.path.join(os.path.dirname(self.faces_dir), "frames")
+        frame_path = os.path.join(frame_dir, frame_data.Frame_Path)
+
+        frame_number = frame_data.Frame_Number
+        video_path = frame_data.Video_Path
+        label = frame_data.Label
+        dataset = frame_data.Dataset
+
+        if not os.path.exists(frame_path):
+            return []
+
+        try:
+            # Load frame
+            frame = cv2.imread(frame_path)
+            if frame is None:
+                return []
+
+            # Detect faces (using pre-initialized detector)
+            detections = face_detector.detect_faces(frame, return_landmarks=False)
+
+            if not detections:
+                return []
+
+            # Extract and save each face
+            faces_data = []
+            for idx, detection in enumerate(detections):
+                face_item = self._extract_and_save_face(
+                    frame=frame,
+                    detection=detection,
+                    frame_number=frame_number,
+                    frame_path=frame_path,
+                    video_path=video_path,
+                    label=label,
+                    dataset=dataset,
+                    idx=idx,
+                    faces_dir=str(self.faces_dir),
+                    face_extractor=face_extractor
+                )
+                faces_data.append(face_item)
+
+            return faces_data
+
+        except Exception as e:
+            self.logger.error(f"Error processing frame {frame_path}: {str(e)}")
+            return []
 
     @staticmethod
     def _process_single_frame(

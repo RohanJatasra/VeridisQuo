@@ -4,6 +4,18 @@ Veridis Quo is a neural network designed to **detect deepfake videos** and **hig
 
 TODO...
 
+## Param
+```bash
+Total params: 40,798,098
+Trainable params: 40,798,098
+Non-trainable params: 0
+----------------------------------------------------------------
+Input size (MB): 0.57
+Forward/backward pass size (MB): 300.57
+Params size (MB): 155.63
+Estimated Total Size (MB): 456.78
+```
+
 ## Prerequisites
 
 Install [uv](https://docs.astral.sh/uv/):
