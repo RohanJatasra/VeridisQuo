@@ -140,15 +140,18 @@ class GradCAM:
         # Step 3: Apply ReLU to focus on positive influence
         cam = F.relu(cam)
 
-        # Step 4: Normalize each sample in batch to [0, 1]
+        # Step 4: Normalize each sample in batch to [0, 1] - vectorized
         batch_size = cam.size(0)
-        for i in range(batch_size):
-            cam_min = cam[i].min()
-            cam_max = cam[i].max()
-            if cam_max - cam_min > 1e-8:  # Avoid division by zero
-                cam[i] = (cam[i] - cam_min) / (cam_max - cam_min)
-            else:
-                cam[i] = torch.zeros_like(cam[i])
+
+        # Compute min/max per sample
+        cam_flat = cam.view(batch_size, -1)
+        cam_min = cam_flat.min(dim=1, keepdim=True)[0].view(batch_size, 1, 1)
+        cam_max = cam_flat.max(dim=1, keepdim=True)[0].view(batch_size, 1, 1)
+
+        # Normalize with safe division
+        cam_range = cam_max - cam_min
+        mask = cam_range > 1e-8
+        cam = torch.where(mask, (cam - cam_min) / cam_range, torch.zeros_like(cam))
 
         return cam
 
