@@ -54,7 +54,7 @@ class TrainingConfig:
     # utils
     compile_model: bool = False
     seed : int = 42
-    use_automixed_precision: bool = False  # Disabled to debug NaN loss
+    use_automixed_precision: bool = True
 
     # Logging
     log_interval: int = 10
@@ -313,10 +313,6 @@ class Trainer:
                     f"  - Images shape: {images.shape}\n"
                     f"  - Images min/max: {images.min().item():.4f}/{images.max().item():.4f}\n"
                     f"  - Labels: {labels}\n"
-                    f"Try:\n"
-                    f"  1. Reduce learning rate (current: {self.config.learning_rate})\n"
-                    f"  2. Disable mixed precision (set use_automixed_precision=False)\n"
-                    f"  3. Check your data for NaN/Inf values"
                 )
                 raise ValueError("Training stopped due to NaN/Inf loss")
 
