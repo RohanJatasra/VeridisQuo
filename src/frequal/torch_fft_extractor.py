@@ -261,46 +261,64 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         x = torch.arange(w, device=device).view(1, -1).float()
         distance_map = torch.sqrt((y - cy)**2 + (x - cx)**2)
 
-        band_means = []
-        band_variances = []
-        band_energies = []
-        band_peaks = []
-        radial_profile = []
+        # Collect features in lists to avoid in-place operations
+        band_means_list = []
+        band_variances_list = []
+        band_energies_list = []
+        band_peaks_list = []
+        radial_profile_list = []
 
         for band_idx in range(self.num_radial_bands):
             # Define annular band
             inner_radius = band_idx * band_width
             outer_radius = (band_idx + 1) * band_width
 
-            # Create mask for this band
+            # Create mask [H, W]
             if band_idx == 0:
                 mask = distance_map <= outer_radius
             else:
                 mask = (distance_map > inner_radius) & (distance_map <= outer_radius)
 
-            # Extract values in this band for all images in batch
-            for b in range(batch_size):
-                band_values = magnitude_spectrum[b][mask]
+            # Expand to batch dimension [B, H, W]
+            mask_expanded = mask.unsqueeze(0).expand(batch_size, -1, -1)
 
-                if len(band_values) > 0:
-                    band_means.append(torch.mean(band_values))
-                    band_variances.append(torch.var(band_values))
-                    band_energies.append(torch.sum(band_values ** 2))
-                    band_peaks.append(torch.max(band_values))
-                    radial_profile.append(torch.mean(band_values))
-                else:
-                    band_means.append(torch.tensor(0.0, device=device))
-                    band_variances.append(torch.tensor(0.0, device=device))
-                    band_energies.append(torch.tensor(0.0, device=device))
-                    band_peaks.append(torch.tensor(0.0, device=device))
-                    radial_profile.append(torch.tensor(0.0, device=device))
+            # Masked spectrum [B, H, W]
+            masked_spectrum = magnitude_spectrum * mask_expanded
 
-        #reshape to [batch_size, num_bands] for each statistic
-        band_means = torch.stack(band_means).view(batch_size, self.num_radial_bands)
-        band_variances = torch.stack(band_variances).view(batch_size, self.num_radial_bands)
-        band_energies = torch.stack(band_energies).view(batch_size, self.num_radial_bands)
-        band_peaks = torch.stack(band_peaks).view(batch_size, self.num_radial_bands)
-        radial_profile = torch.stack(radial_profile).view(batch_size, self.num_radial_bands)
+            # Count valid pixels per sample [B]
+            counts = mask_expanded.sum(dim=[1, 2]).float()
+            counts = torch.clamp(counts, min=1.0)  # Avoid division by zero
+
+            # Vectorized statistics across batch
+            band_mean = masked_spectrum.sum(dim=[1, 2]) / counts
+            band_means_list.append(band_mean)
+
+            # Variance (two-pass for numerical stability)
+            mean_expanded = band_mean.view(batch_size, 1, 1)
+            variance_sum = ((masked_spectrum - mean_expanded * mask_expanded) ** 2 * mask_expanded).sum(dim=[1, 2])
+            band_variance = variance_sum / counts
+            band_variances_list.append(band_variance)
+
+            # Energy
+            band_energy = (masked_spectrum ** 2).sum(dim=[1, 2])
+            band_energies_list.append(band_energy)
+
+            # Peaks (max with masking) - use torch.where to avoid in-place ops and CPU transfers
+            neg_inf = torch.full_like(magnitude_spectrum, -float('inf'))
+            masked_for_max = torch.where(mask_expanded, magnitude_spectrum, neg_inf)
+            band_peak = masked_for_max.view(batch_size, -1).max(dim=1)[0]
+            band_peak = torch.clamp(band_peak, min=0.0)
+            band_peaks_list.append(band_peak)
+
+            # Radial profile (same as mean)
+            radial_profile_list.append(band_mean)
+
+        # Stack into tensors [batch, num_bands]
+        band_means = torch.stack(band_means_list, dim=1)
+        band_variances = torch.stack(band_variances_list, dim=1)
+        band_energies = torch.stack(band_energies_list, dim=1)
+        band_peaks = torch.stack(band_peaks_list, dim=1)
+        radial_profile = torch.stack(radial_profile_list, dim=1)
 
         # Concatenate: 4 statistics per band + radial profile
         features = torch.cat([
@@ -338,32 +356,43 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
 
         sector_width = self._get_sector_width()
 
-        sector_means = []
-        sector_variances = []
+        # Collect features in lists to avoid in-place operations
+        sector_means_list = []
+        sector_variances_list = []
 
         for sector_idx in range(self.NUM_AZIMUTHAL_SECTORS):
             angle_start = -math.pi + sector_idx * sector_width
             angle_end = angle_start + sector_width
 
+            # Create mask [H, W]
             if sector_idx == self.NUM_AZIMUTHAL_SECTORS - 1:
                 mask = (angles >= angle_start) | (angles < -math.pi + sector_width)
             else:
                 mask = (angles >= angle_start) & (angles < angle_end)
 
-            #apply mask to magnitude spectrum to extract sector values
-            for b in range(batch_size):
-                sector_values = magnitude_spectrum[b][mask]
+            # Expand to batch dimension [B, H, W]
+            mask_expanded = mask.unsqueeze(0).expand(batch_size, -1, -1)
 
-                if len(sector_values) > 0:
-                    sector_means.append(torch.mean(sector_values))
-                    sector_variances.append(torch.var(sector_values))
-                else:
-                    sector_means.append(torch.tensor(0.0, device=device))
-                    sector_variances.append(torch.tensor(0.0, device=device))
+            # Masked spectrum [B, H, W]
+            masked_spectrum = magnitude_spectrum * mask_expanded
 
-        #reshape to [batch_size, num_sectors]
-        sector_means = torch.stack(sector_means).view(batch_size, self.NUM_AZIMUTHAL_SECTORS)
-        sector_variances = torch.stack(sector_variances).view(batch_size, self.NUM_AZIMUTHAL_SECTORS)
+            # Count valid pixels per sample [B]
+            counts = mask_expanded.sum(dim=[1, 2]).float()
+            counts = torch.clamp(counts, min=1.0)  # Avoid division by zero
+
+            # Vectorized statistics across batch
+            sector_mean = masked_spectrum.sum(dim=[1, 2]) / counts
+            sector_means_list.append(sector_mean)
+
+            # Variance (two-pass for numerical stability)
+            mean_expanded = sector_mean.view(batch_size, 1, 1)
+            variance_sum = ((masked_spectrum - mean_expanded * mask_expanded) ** 2 * mask_expanded).sum(dim=[1, 2])
+            sector_variance = variance_sum / counts
+            sector_variances_list.append(sector_variance)
+
+        # Stack into tensors [batch, num_sectors]
+        sector_means = torch.stack(sector_means_list, dim=1)
+        sector_variances = torch.stack(sector_variances_list, dim=1)
 
         features = torch.cat([sector_means, sector_variances], dim=1)
         return features
@@ -495,17 +524,26 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         x = torch.arange(w, device=device).view(1, -1).float()
         distance_map = torch.sqrt((y - center[0])**2 + (x - center[1])**2)
 
-        radial_profile_samples = []
-        for r in radii:
+        # Vectorized radial profile sampling - collect in list to avoid in-place ops
+        radial_profile_samples_list = []
+        for i, r in enumerate(radii):
+            # Create mask [H, W]
             mask = (distance_map >= r - 1) & (distance_map < r + 1)
-            for b in range(batch_size):
-                values = magnitude_spectrum[b][mask]
-                if len(values) > 0:
-                    radial_profile_samples.append(torch.mean(values))
-                else:
-                    radial_profile_samples.append(torch.tensor(0.0, device=device))
 
-        radial_profile_samples = torch.stack(radial_profile_samples).view(batch_size, num_samples)
+            # Expand to batch dimension [B, H, W]
+            mask_expanded = mask.unsqueeze(0).expand(batch_size, -1, -1)
+
+            # Masked spectrum [B, H, W]
+            masked_spectrum = magnitude_spectrum * mask_expanded
+
+            # Count valid pixels per sample [B]
+            counts = mask_expanded.sum(dim=[1, 2]).float().clamp(min=1.0)
+
+            # Vectorized mean across batch
+            profile_sample = masked_spectrum.sum(dim=[1, 2]) / counts
+            radial_profile_samples_list.append(profile_sample)
+
+        radial_profile_samples = torch.stack(radial_profile_samples_list, dim=1)
         upsampling_score = torch.var(radial_profile_samples, dim=1)
 
         #asymmetry scores (horizontal, vertical)
