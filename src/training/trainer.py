@@ -40,20 +40,19 @@ class TrainingConfig:
     """Configuration for training."""
     # Device
     device: torch.device = field(default=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-    test: bool = True
+    test: bool = False
 
     # Dataset paths (set in __post_init__ based on test flag)
     dataset_config: Optional[Union[DatasetConfig, TestDatasetConfig]] = None
 
     # Training hyperparameters
-    batch_size: int = 32  # Optimal for GPU 16GB (use 16 if GPU 8GB)
+    batch_size: int = 32 # Optimal for GPU 16GB (use 16 if GPU 8GB)
     learning_rate: float = 1e-3  # 10x faster convergence
     weight_decay: float = 1e-4  # Standard L2 regularization
     num_epochs: int = 50  # Full training
-    num_workers: int = 4
-
+    num_workers: int = 8
     # utils
-    compile_model: bool = True
+    compile_model: bool = False
     seed : int = 42
     use_automixed_precision: bool = True
 
@@ -72,7 +71,7 @@ class TrainingConfig:
     # Wandb
     wandb_project: str = "deepfake-detector"
     wandb_entity: Optional[str] = None
-    use_wandb: bool = False
+    use_wandb: bool = True
 
     def __post_init__(self):
         if self.dataset_config is None:
@@ -164,6 +163,9 @@ class Trainer:
             lr=self.config.learning_rate,
             weight_decay=self.config.weight_decay
         )
+
+        # GradScaler for mixed precision training
+        self.scaler = torch.amp.GradScaler('cuda') if self.config.use_automixed_precision and self.device.type == 'cuda' else None
 
         # Learning rate scheduler
         self.scheduler = ReduceLROnPlateau(
@@ -360,23 +362,34 @@ class Trainer:
         """
         self.optimizer.zero_grad()
 
-        # Forward pass
-        if self.config.use_automixed_precision:
+        # Forward pass with mixed precision
+        if self.config.use_automixed_precision and self.scaler is not None:
             with torch.autocast(device_type=self.device.type, dtype=torch.float16):
                 outputs = self.model(images)
                 loss = self.criterion(outputs, labels)
+
+            # Backward pass with gradient scaling
+            self.scaler.scale(loss).backward()
+
+            # Gradient clipping (unscale first for accurate clipping)
+            self.scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+
+            # Update weights
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
         else:
             outputs = self.model(images)
             loss = self.criterion(outputs, labels)
 
-        # Backward pass
-        loss.backward()
+            # Backward pass
+            loss.backward()
 
-        # Gradient clipping
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
+            # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
 
-        # Update weights
-        self.optimizer.step()
+            # Update weights
+            self.optimizer.step()
 
         # Calculate accuracy (keep as tensor)
         predictions = torch.argmax(outputs, dim=1)
