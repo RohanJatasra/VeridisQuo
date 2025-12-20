@@ -39,21 +39,22 @@ class TestDatasetConfig:
 class TrainingConfig:
     """Configuration for training."""
     # Device
-    device: torch.device = field(default_factory=lambda: torch.device("cpu"))
-    test: bool = True
+    device: torch.device = field(default=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+    test: bool = False
 
     # Dataset paths (set in __post_init__ based on test flag)
     dataset_config: Optional[Union[DatasetConfig, TestDatasetConfig]] = None
 
     # Training hyperparameters
-    batch_size: int = 1
-    learning_rate: float = 1e-4
-    weight_decay: float = 1e-5
-    num_epochs: int = 2
-    num_workers: int = 4
-
+    batch_size: int = 64 # Optimal for GPU 16GB (use 16 if GPU 8GB)
+    learning_rate: float = 1e-4  # Conservative LR to prevent NaN loss
+    weight_decay: float = 1e-4  # Standard L2 regularization
+    num_epochs: int = 50  # Full training
+    num_workers: int = 8
     # utils
-    compile_model: bool = True
+    compile_model: bool = False
+    seed : int = 42
+    use_automixed_precision: bool = True
 
     # Logging
     log_interval: int = 10
@@ -70,7 +71,7 @@ class TrainingConfig:
     # Wandb
     wandb_project: str = "deepfake-detector"
     wandb_entity: Optional[str] = None
-    use_wandb: bool = False
+    use_wandb: bool = True
 
     def __post_init__(self):
         if self.dataset_config is None:
@@ -99,6 +100,13 @@ class Trainer:
         self.wandb_run = None
         if self.config.use_wandb:
             self._init_wandb()
+            
+        if self.config.seed is not None:
+            torch.manual_seed(self.config.seed)
+            if self.device.type == 'cuda':
+                torch.cuda.manual_seed_all(self.config.seed)
+        
+        torch.set_float32_matmul_precision('high')
 
         # Load datasets
         self.logger.info("Loading datasets...")
@@ -149,12 +157,15 @@ class Trainer:
             self.logger.info("Model compilation complete.")
 
         # Loss and optimizer
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss().to(self.device)
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(),
             lr=self.config.learning_rate,
             weight_decay=self.config.weight_decay
         )
+
+        # GradScaler for mixed precision training
+        self.scaler = torch.amp.GradScaler('cuda') if self.config.use_automixed_precision and self.device.type == 'cuda' else None
 
         # Learning rate scheduler
         self.scheduler = ReduceLROnPlateau(
@@ -294,6 +305,17 @@ class Trainer:
             # Forward pass
             loss, correct = self._train_step(images, labels)
 
+            # Check for NaN loss
+            if torch.isnan(loss) or torch.isinf(loss):
+                self.logger.error(
+                    f"NaN or Inf loss detected at batch {batch_idx}!\n"
+                    f"  - Loss value: {loss.item()}\n"
+                    f"  - Images shape: {images.shape}\n"
+                    f"  - Images min/max: {images.min().item():.4f}/{images.max().item():.4f}\n"
+                    f"  - Labels: {labels}\n"
+                )
+                raise ValueError("Training stopped due to NaN/Inf loss")
+
             # Accumulate tensors (keep on GPU)
             batch_losses.append(loss * images.size(0))
             batch_corrects.append(correct)
@@ -351,18 +373,34 @@ class Trainer:
         """
         self.optimizer.zero_grad()
 
-        # Forward pass
-        outputs = self.model(images)
-        loss = self.criterion(outputs, labels)
+        # Forward pass with mixed precision
+        if self.config.use_automixed_precision and self.scaler is not None:
+            with torch.autocast(device_type=self.device.type, dtype=torch.float16):
+                outputs = self.model(images)
+                loss = self.criterion(outputs, labels)
 
-        # Backward pass
-        loss.backward()
+            # Backward pass with gradient scaling
+            self.scaler.scale(loss).backward()
 
-        # Gradient clipping
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            # Gradient clipping (unscale first for accurate clipping)
+            self.scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
 
-        # Update weights
-        self.optimizer.step()
+            # Update weights
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            outputs = self.model(images)
+            loss = self.criterion(outputs, labels)
+
+            # Backward pass
+            loss.backward()
+
+            # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+
+            # Update weights
+            self.optimizer.step()
 
         # Calculate accuracy (keep as tensor)
         predictions = torch.argmax(outputs, dim=1)

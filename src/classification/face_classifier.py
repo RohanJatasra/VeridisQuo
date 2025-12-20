@@ -20,7 +20,7 @@ class FaceClassifier(nn.Module):
         input_dim: int,
         num_classes: int =2,
         hidden_dims: Optional[List[int]] =None,
-        dropout_rate: float =0.5,
+        dropout_rate: float =0.2, 
         use_batch_norm: bool =True,
         path_to_weights: Optional[str] =None
     ):
@@ -62,6 +62,9 @@ class FaceClassifier(nn.Module):
         self.classifier = self._build_classifier()
         """Classifier network"""
 
+        # Initialize weights with Kaiming initialization for ReLU
+        self._initialize_weights()
+
         #pretrained weights
         if path_to_weights is not None:
             self.load_weights(path_to_weights)
@@ -87,11 +90,12 @@ class FaceClassifier(nn.Module):
 
         #build hidden layers
         for hidden_dim in self.hidden_dims:
-            
+
             layers.append(nn.Linear(current_dim, hidden_dim))
-            
+
             if self.use_batch_norm:
-                layers.append(nn.BatchNorm1d(hidden_dim))
+                # Use LayerNorm instead of BatchNorm to support batch_size=1
+                layers.append(nn.LayerNorm(hidden_dim))
 
             layers.append(nn.ReLU(inplace=True))
 
@@ -104,6 +108,22 @@ class FaceClassifier(nn.Module):
         layers.append(nn.Linear(current_dim, self.num_classes))
 
         return nn.Sequential(*layers)
+
+    def _initialize_weights(self) -> None:
+        """Initialize network weights with Kaiming initialization for ReLU.
+
+        Uses He initialization (Kaiming normal) for Linear layers with ReLU activation,
+        which helps prevent vanishing/exploding gradients and improves convergence.
+        """
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, (nn.BatchNorm1d, nn.LayerNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+        self.logger.info("Weights initialized with Kaiming initialization")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the classifier.

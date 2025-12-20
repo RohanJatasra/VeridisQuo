@@ -40,8 +40,22 @@ class FaceFeaturesConcatenator(nn.Module):
         self.output_dim: int = spatial_feature_dim + frequency_feature_dim
         """Total concatenated feature dimension"""
 
+
+        # Use LayerNorm instead of BatchNorm to support batch_size=1
+        self.normalization: nn.LayerNorm = nn.LayerNorm(self.output_dim)
+        """Layer normalization to normalize concatenated features"""
+
+        # Initialize normalization weights
+        self._initialize_weights()
+
         self.logger.info(f"FaceFeaturesConcatenator initialized: spatial_dim={spatial_feature_dim}, "
                         f"frequency_dim={frequency_feature_dim}, output_dim={self.output_dim}")
+
+    def _initialize_weights(self) -> None:
+        """Initialize normalization layer weights."""
+        nn.init.constant_(self.normalization.weight, 1)
+        nn.init.constant_(self.normalization.bias, 0)
+        self.logger.info("LayerNorm weights initialized")
 
     def forward(self,
         spatial_features: torch.Tensor,
@@ -88,6 +102,9 @@ class FaceFeaturesConcatenator(nn.Module):
 
         #concatenate features along feature dimension
         concatenated = torch.cat([spatial_features, frequency_features], dim=1)
+
+        # Apply layer normalization to equalize feature scales
+        concatenated = self.normalization(concatenated)
 
         self.logger.debug(f"- forward - Concatenated features: spatial {spatial_features.shape} + "
                          f"frequency {frequency_features.shape} = {concatenated.shape}")
