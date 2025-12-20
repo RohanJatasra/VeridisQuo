@@ -39,17 +39,17 @@ class TestDatasetConfig:
 class TrainingConfig:
     """Configuration for training."""
     # Device
-    device: torch.device = field(default_factory=lambda: torch.device("cpu"))
+    device: torch.device = field(default=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     test: bool = True
 
     # Dataset paths (set in __post_init__ based on test flag)
     dataset_config: Optional[Union[DatasetConfig, TestDatasetConfig]] = None
 
     # Training hyperparameters
-    batch_size: int = 1
-    learning_rate: float = 1e-4
-    weight_decay: float = 1e-5
-    num_epochs: int = 2
+    batch_size: int = 32  # Optimal for GPU 16GB (use 16 if GPU 8GB)
+    learning_rate: float = 1e-3  # 10x faster convergence
+    weight_decay: float = 1e-4  # Standard L2 regularization
+    num_epochs: int = 50  # Full training
     num_workers: int = 4
 
     # utils
@@ -158,7 +158,7 @@ class Trainer:
             self.logger.info("Model compilation complete.")
 
         # Loss and optimizer
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss().to(self.device)
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(),
             lr=self.config.learning_rate,
@@ -373,7 +373,7 @@ class Trainer:
         loss.backward()
 
         # Gradient clipping
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
 
         # Update weights
         self.optimizer.step()
