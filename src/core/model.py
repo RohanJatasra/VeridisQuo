@@ -11,7 +11,7 @@ class DeepFakeDetector(nn.Module):
     def __init__(self):
         super(DeepFakeDetector, self).__init__()
         self.efficient = EfficientNetFeatureExtractor(pretrained=True)
-        self.frequal_extractor = FrequencyFeatureExtractor()
+        self.frequal_extractor = FrequencyFeatureExtractor(use_gpu_extractors=True)
         
         self.concatenator = FaceFeaturesConcatenator()
         self.classifier = FaceClassifier(input_dim=2816)
