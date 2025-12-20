@@ -338,14 +338,26 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
         total_energy = torch.sum(band_energies, dim=1)
         high_freq_ratio = band_energies[:, -1] / (total_energy + self.EPSILON)
 
-        #histogram of coefficient magnitudes (10 bins)
+        #histogram of coefficient magnitudes (10 bins) - vectorized
         all_coeffs = blocks_flat.reshape(batch_size, -1)
-        hist_list = []
-        for b in range(batch_size):
-            hist = torch.histc(torch.abs(all_coeffs[b]), bins=10, min=0, max=100)
-            hist = hist / (hist.sum() + self.EPSILON)  #normalize
-            hist_list.append(hist)
-        hist = torch.stack(hist_list, dim=0)
+        all_coeffs_abs = torch.abs(all_coeffs)  # [batch, num_coeffs]
+        bins = 10
+        hist_min, hist_max = 0.0, 100.0
+        bin_width = (hist_max - hist_min) / bins
+
+        # Compute bin indices [batch, num_coeffs]
+        all_coeffs_clamped = torch.clamp(all_coeffs_abs, hist_min, hist_max - 1e-6)
+        bin_indices = ((all_coeffs_clamped - hist_min) / bin_width).long()
+        bin_indices = torch.clamp(bin_indices, 0, bins - 1)
+
+        # One-hot encoding [batch, num_coeffs, bins]
+        one_hot = F.one_hot(bin_indices, num_classes=bins).float()
+
+        # Sum to get histogram [batch, bins]
+        hist = one_hot.sum(dim=1)
+
+        # Normalize
+        hist = hist / (hist.sum(dim=1, keepdim=True) + self.EPSILON)
 
         #concatenate all features
         features = torch.cat([
@@ -385,14 +397,26 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
         #compute statistics across blocks for each coefficient position
         means = torch.mean(zigzag_coeffs, dim=1)  # [batch, 16]
 
-        #histogram of coefficient magnitudes
+        #histogram of coefficient magnitudes - vectorized
         all_coeffs = zigzag_coeffs.reshape(batch_size, -1)
-        hist_list = []
-        for b in range(batch_size):
-            hist = torch.histc(torch.abs(all_coeffs[b]), bins=10, min=0, max=100)
-            hist = hist / (hist.sum() + self.EPSILON)  #normalize
-            hist_list.append(hist)
-        hist = torch.stack(hist_list, dim=0)
+        all_coeffs_abs = torch.abs(all_coeffs)  # [batch, num_coeffs]
+        bins = 10
+        hist_min, hist_max = 0.0, 100.0
+        bin_width = (hist_max - hist_min) / bins
+
+        # Compute bin indices [batch, num_coeffs]
+        all_coeffs_clamped = torch.clamp(all_coeffs_abs, hist_min, hist_max - 1e-6)
+        bin_indices = ((all_coeffs_clamped - hist_min) / bin_width).long()
+        bin_indices = torch.clamp(bin_indices, 0, bins - 1)
+
+        # One-hot encoding [batch, num_coeffs, bins]
+        one_hot = F.one_hot(bin_indices, num_classes=bins).float()
+
+        # Sum to get histogram [batch, bins]
+        hist = one_hot.sum(dim=1)
+
+        # Normalize
+        hist = hist / (hist.sum(dim=1, keepdim=True) + self.EPSILON)
 
         features = torch.cat([means, hist], dim=1)
         return features
