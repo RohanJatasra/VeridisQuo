@@ -288,8 +288,9 @@ class Trainer:
         """
         self.model.train()
 
-        total_loss = 0.0
-        total_correct = 0
+        # Accumulate tensors on GPU
+        batch_losses = []
+        batch_corrects = []
         total_samples = 0
 
         pbar = tqdm(
@@ -302,39 +303,51 @@ class Trainer:
             # Forward pass
             loss, correct = self._train_step(images, labels)
 
-            # Accumulate metrics
-            total_loss += loss * images.size(0)
-            total_correct += correct
+            # Accumulate tensors (keep on GPU)
+            batch_losses.append(loss * images.size(0))
+            batch_corrects.append(correct)
             total_samples += images.size(0)
 
-            # Update progress bar
-            running_loss = total_loss / total_samples
-            running_acc = total_correct / total_samples
-            pbar.set_postfix({
-                'loss': f'{running_loss:.4f}',
-                'acc': f'{running_acc:.4f}'
-            })
+            # Update progress bar and log every 10 batches (periodic sync to CPU)
+            if batch_idx % self.config.log_interval == 0:
+                # Calculate running metrics from recent batches
+                recent_start = max(0, len(batch_losses) - self.config.log_interval)
+                recent_losses = torch.stack(batch_losses[recent_start:])
+                recent_corrects = torch.stack(batch_corrects[recent_start:])
+                recent_samples = min(total_samples, self.config.log_interval * images.size(0))
 
-            # Log to wandb
-            if self.wandb_run and batch_idx % self.config.log_interval == 0:
-                wandb.log({
-                    "train/batch_loss": loss,
-                    "train/batch_acc": correct / images.size(0),
-                    "global_step": self.global_step
+                running_loss = recent_losses.sum().item() / recent_samples
+                running_acc = recent_corrects.sum().item() / recent_samples
+
+                pbar.set_postfix({
+                    'loss': f'{running_loss:.4f}',
+                    'acc': f'{running_acc:.4f}'
                 })
+
+                # Log to wandb
+                if self.wandb_run:
+                    wandb.log({
+                        "train/batch_loss": loss.item(),
+                        "train/batch_acc": (correct.float() / images.size(0)).item(),
+                        "global_step": self.global_step
+                    })
 
             self.global_step += 1
 
+        # End of epoch: single GPU aggregation then sync to CPU
+        total_loss_tensor = torch.stack(batch_losses).sum()
+        total_correct_tensor = torch.stack(batch_corrects).sum()
+
         return {
-            'loss': total_loss / total_samples,
-            'accuracy': total_correct / total_samples
+            'loss': (total_loss_tensor / total_samples).item(),
+            'accuracy': (total_correct_tensor.float() / total_samples).item()
         }
 
     def _train_step(
         self,
         images: torch.Tensor,
         labels: torch.Tensor
-    ) -> Tuple[float, int]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Perform single training step.
 
@@ -343,7 +356,7 @@ class Trainer:
             labels: Batch of labels [B]
 
         Returns:
-            Tuple of (loss value, number of correct predictions)
+            Tuple of (loss tensor, correct count tensor)
         """
         self.optimizer.zero_grad()
 
@@ -365,11 +378,11 @@ class Trainer:
         # Update weights
         self.optimizer.step()
 
-        # Calculate accuracy
+        # Calculate accuracy (keep as tensor)
         predictions = torch.argmax(outputs, dim=1)
-        correct = (predictions == labels).sum().item()
+        correct = (predictions == labels).sum()
 
-        return loss.item(), correct
+        return loss.detach(), correct
 
     def _validate(self) -> Dict[str, float]:
         """
@@ -397,34 +410,37 @@ class Trainer:
         """
         self.model.eval()
 
-        total_loss = 0.0
-        total_correct = 0
         total_samples = 0
 
-        # For precision/recall/F1
-        all_predictions = []
-        all_labels = []
+        # Accumulate tensors on GPU
+        batch_losses = []
+        all_predictions = []  # List of tensors
+        all_labels = []       # List of tensors
 
         with torch.no_grad():
             for images, labels in tqdm(dataloader, desc=f"Evaluating {split_name}"):
                 outputs = self.model(images)
                 loss = self.criterion(outputs, labels)
-
                 predictions = torch.argmax(outputs, dim=1)
 
-                total_loss += loss.item() * images.size(0)
-                total_correct += (predictions == labels).sum().item()
+                # Keep on GPU
+                batch_losses.append(loss * images.size(0))
+                all_predictions.append(predictions)
+                all_labels.append(labels)
                 total_samples += images.size(0)
 
-                all_predictions.extend(predictions.cpu().numpy())
-                all_labels.extend(labels.cpu().numpy())
+        # Single GPU concatenation
+        all_predictions_gpu = torch.cat(all_predictions, dim=0)
+        all_labels_gpu = torch.cat(all_labels, dim=0)
+        total_loss_tensor = torch.stack(batch_losses).sum()
+        total_correct_tensor = (all_predictions_gpu == all_labels_gpu).sum()
 
-        # Calculate metrics
-        avg_loss = total_loss / total_samples
-        accuracy = total_correct / total_samples
+        # Calculate basic metrics on GPU
+        avg_loss = (total_loss_tensor / total_samples).item()
+        accuracy = (total_correct_tensor.float() / total_samples).item()
 
-        # Precision, Recall, F1 for FAKE class (class 0)
-        metrics = self._compute_metrics(all_predictions, all_labels)
+        # Compute precision/recall/F1 on GPU
+        metrics = self._compute_metrics_gpu(all_predictions_gpu, all_labels_gpu)
         metrics['loss'] = avg_loss
         metrics['accuracy'] = accuracy
 
@@ -466,6 +482,38 @@ class Trainer:
             'precision': precision,
             'recall': recall,
             'f1': f1
+        }
+
+    def _compute_metrics_gpu(
+        self,
+        predictions: torch.Tensor,
+        labels: torch.Tensor
+    ) -> Dict[str, float]:
+        """
+        Compute precision, recall, and F1 score on GPU.
+
+        Args:
+            predictions (torch.Tensor): predicted labels [N]
+            labels (torch.Tensor): true labels [N]
+
+        Returns:
+            Dict[str, float]: metrics dictionary
+        """
+        # Compute TP, FP, FN for class 0 (FAKE)
+        tp = ((predictions == 0) & (labels == 0)).sum().float()
+        fp = ((predictions == 0) & (labels == 1)).sum().float()
+        fn = ((predictions == 1) & (labels == 0)).sum().float()
+
+        # Compute metrics on GPU
+        precision = tp / (tp + fp + 1e-10)
+        recall = tp / (tp + fn + 1e-10)
+        f1 = 2 * precision * recall / (precision + recall + 1e-10)
+
+        # Single sync to CPU
+        return {
+            'precision': precision.item(),
+            'recall': recall.item(),
+            'f1': f1.item()
         }
 
     def _log_metrics(
