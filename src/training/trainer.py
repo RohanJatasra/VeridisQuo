@@ -46,15 +46,15 @@ class TrainingConfig:
     dataset_config: Optional[Union[DatasetConfig, TestDatasetConfig]] = None
 
     # Training hyperparameters
-    batch_size: int = 32 # Optimal for GPU 16GB (use 16 if GPU 8GB)
-    learning_rate: float = 1e-3  # 10x faster convergence
+    batch_size: int = 64 # Optimal for GPU 16GB (use 16 if GPU 8GB)
+    learning_rate: float = 1e-4  # Conservative LR to prevent NaN loss
     weight_decay: float = 1e-4  # Standard L2 regularization
     num_epochs: int = 50  # Full training
     num_workers: int = 8
     # utils
     compile_model: bool = False
     seed : int = 42
-    use_automixed_precision: bool = True
+    use_automixed_precision: bool = False  # Disabled to debug NaN loss
 
     # Logging
     log_interval: int = 10
@@ -304,6 +304,21 @@ class Trainer:
         for batch_idx, (images, labels) in enumerate(pbar):
             # Forward pass
             loss, correct = self._train_step(images, labels)
+
+            # Check for NaN loss
+            if torch.isnan(loss) or torch.isinf(loss):
+                self.logger.error(
+                    f"NaN or Inf loss detected at batch {batch_idx}!\n"
+                    f"  - Loss value: {loss.item()}\n"
+                    f"  - Images shape: {images.shape}\n"
+                    f"  - Images min/max: {images.min().item():.4f}/{images.max().item():.4f}\n"
+                    f"  - Labels: {labels}\n"
+                    f"Try:\n"
+                    f"  1. Reduce learning rate (current: {self.config.learning_rate})\n"
+                    f"  2. Disable mixed precision (set use_automixed_precision=False)\n"
+                    f"  3. Check your data for NaN/Inf values"
+                )
+                raise ValueError("Training stopped due to NaN/Inf loss")
 
             # Accumulate tensors (keep on GPU)
             batch_losses.append(loss * images.size(0))
