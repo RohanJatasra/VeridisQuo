@@ -11,7 +11,7 @@ class FusionMLP(nn.Module):
         input_dim: int,
         output_dim: int,
         hidden_dims: Optional[List[int]] = None,
-        dropout_rate: float = 0.3,
+        dropout_rate: float = 0.2,
         use_batch_norm: bool = True
     ):
         """Initialize FusionMLP.
@@ -66,7 +66,25 @@ class FusionMLP(nn.Module):
         self.mlp: nn.Sequential = nn.Sequential(*layers)
         """Sequential MLP layers"""
 
+        # Initialize weights with Kaiming initialization for ReLU
+        self._initialize_weights()
+
         self.logger.info(f"FusionMLP initialized: {input_dim} -> {hidden_dims} -> {output_dim}")
+
+    def _initialize_weights(self) -> None:
+        """Initialize MLP weights with Kaiming initialization for ReLU.
+
+        Uses He initialization for Linear layers to prevent vanishing/exploding gradients.
+        """
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+        self.logger.info("FusionMLP weights initialized with Kaiming initialization")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through MLP.
