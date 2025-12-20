@@ -90,11 +90,12 @@ class FaceClassifier(nn.Module):
 
         #build hidden layers
         for hidden_dim in self.hidden_dims:
-            
+
             layers.append(nn.Linear(current_dim, hidden_dim))
-            
+
             if self.use_batch_norm:
-                layers.append(nn.BatchNorm1d(hidden_dim))
+                # Use LayerNorm instead of BatchNorm to support batch_size=1
+                layers.append(nn.LayerNorm(hidden_dim))
 
             layers.append(nn.ReLU(inplace=True))
 
@@ -119,7 +120,7 @@ class FaceClassifier(nn.Module):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm1d):
+            elif isinstance(m, (nn.BatchNorm1d, nn.LayerNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
         self.logger.info("Weights initialized with Kaiming initialization")
