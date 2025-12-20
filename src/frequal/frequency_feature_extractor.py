@@ -165,6 +165,8 @@ class FrequencyFeatureExtractor(nn.Module):
                 - Values normalized to [0, 1] or [-1, 1]
                 - Will be converted to [0, 255] BGR format for frequency analysis
             parallelize (bool): whether to parallelize DCT and FFT extraction.
+                Only used when use_gpu_extractors=False (CPU mode with NumPy).
+                GPU extractors are already parallelized by CUDA.
         Returns:
             torch.Tensor: fused frequency features [batch, fusion_output_dim]
                 where fusion_output_dim is the output dimension of the MLP fusion layer
@@ -182,15 +184,9 @@ class FrequencyFeatureExtractor(nn.Module):
 
         if self.use_gpu_extractors:
             #use PyTorch extractors directly on GPU tensors
-            if parallelize:
-                with ThreadPoolExecutor(max_workers=2) as executor:
-                    dct_thread = executor.submit(self.dct_extractor.extract, x)
-                    fft_thread = executor.submit(self.fft_extractor.extract, x)
-                    dct_features = dct_thread.result()
-                    fft_features = fft_thread.result()
-            else:
-                dct_features = self.dct_extractor.extract(x)
-                fft_features = self.fft_extractor.extract(x)
+            #GPU operations are already parallelized, no need for threading
+            dct_features = self.dct_extractor.extract(x)
+            fft_features = self.fft_extractor.extract(x)
 
             #combine features (already PyTorch tensors)
             combined_tensor = torch.cat([dct_features, fft_features], dim=1)
