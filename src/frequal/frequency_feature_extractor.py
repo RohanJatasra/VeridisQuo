@@ -133,13 +133,30 @@ class FrequencyFeatureExtractor(nn.Module):
         )
         """MLP for feature fusion"""
 
+        # Initialize DCT and FFT projection layers
+        self._initialize_projections()
+
         #load pretrained weights if provided
         if path_to_weights is not None:
             self.load_weights(path_to_weights)
             self.logger.info(f"Loaded pretrained weights from {path_to_weights}")
 
         self.logger.info("FrequencyFeatureExtractor initialized successfully.")
-        
+
+    def _initialize_projections(self) -> None:
+        """Initialize DCT and FFT projection layers with Xavier initialization.
+
+        Xavier initialization is appropriate for projection layers that don't use ReLU activation.
+        """
+        for extractor in [self.dct_extractor, self.fft_extractor]:
+            if hasattr(extractor, 'projection'):
+                for m in extractor.projection.modules():
+                    if isinstance(m, nn.Linear):
+                        nn.init.xavier_normal_(m.weight)
+                        if m.bias is not None:
+                            nn.init.constant_(m.bias, 0)
+        self.logger.info("DCT/FFT projections initialized with Xavier initialization")
+
     def forward(self, x: torch.Tensor, parallelize: bool =False) -> torch.Tensor:
         """Extract combined frequency features from input images.
         Parameters:
