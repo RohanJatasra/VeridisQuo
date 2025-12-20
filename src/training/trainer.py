@@ -54,6 +54,8 @@ class TrainingConfig:
 
     # utils
     compile_model: bool = True
+    seed : int = 42
+    use_automixed_precision: bool = True
 
     # Logging
     log_interval: int = 10
@@ -99,6 +101,13 @@ class Trainer:
         self.wandb_run = None
         if self.config.use_wandb:
             self._init_wandb()
+            
+        if self.config.seed is not None:
+            torch.manual_seed(self.config.seed)
+            if self.device.type == 'cuda':
+                torch.cuda.manual_seed_all(self.config.seed)
+        
+        torch.set_float32_matmul_precision('high')
 
         # Load datasets
         self.logger.info("Loading datasets...")
@@ -339,8 +348,13 @@ class Trainer:
         self.optimizer.zero_grad()
 
         # Forward pass
-        outputs = self.model(images)
-        loss = self.criterion(outputs, labels)
+        if self.config.use_automixed_precision:
+            with torch.autocast(device_type=self.device.type, dtype=torch.float16):
+                outputs = self.model(images)
+                loss = self.criterion(outputs, labels)
+        else:
+            outputs = self.model(images)
+            loss = self.criterion(outputs, labels)
 
         # Backward pass
         loss.backward()
