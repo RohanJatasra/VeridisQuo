@@ -1,3 +1,5 @@
+from frequal.base_dct_extractor import BaseDCTExtractor
+from frequal.base_fft_extractor import BaseFFTExtractor
 import torch
 import torch.nn as nn
 import numpy as np
@@ -85,42 +87,42 @@ class FrequencyFeatureExtractor(nn.Module):
         self.use_gpu_extractors: bool = use_gpu_extractors
         """Whether to use GPU-based PyTorch extractors or CPU-based NumPy extractors"""
 
+        self.dct_extractor: BaseDCTExtractor
+        """DCT PyTorch or Numpy based feature extractor"""
+        self.fft_extractor: BaseFFTExtractor
+        """FFT PyTorch or Numpy based feature extractor"""
         if use_gpu_extractors:
-            self.dct_extractor: TorchDCTExtractor = TorchDCTExtractor(
+            self.dct_extractor = TorchDCTExtractor(
                 block_size=dct_block_size,
                 channel_mode=channel_mode,
                 aggregation_method=dct_aggregation_method,
                 num_frequency_bands=dct_num_frequency_bands,
                 feature_dim=dct_feature_dim
             )
-            """DCT PyTorch based feature extractor"""
 
-            self.fft_extractor: TorchFFTExtractor = TorchFFTExtractor(
+            self.fft_extractor = TorchFFTExtractor(
                 channel_mode=channel_mode,
                 num_radial_bands=fft_num_radial_bands,
                 window_function=fft_window_function,
                 high_freq_emphasis=True,
                 feature_dim=fft_feature_dim
             )
-            """FFT PyTorch based feature extractor"""
         else:
-            self.dct_extractor: NpDCTExtractor = NpDCTExtractor(
+            self.dct_extractor = NpDCTExtractor(
                 block_size=dct_block_size,
                 channel_mode=channel_mode,
                 aggregation_method=dct_aggregation_method,
                 num_frequency_bands=dct_num_frequency_bands,
                 feature_dim=dct_feature_dim
             )
-            """DCT Numpy based feature extractor"""
 
-            self.fft_extractor: NpFFTExtractor = NpFFTExtractor(
+            self.fft_extractor = NpFFTExtractor(
                 channel_mode=channel_mode,
                 num_radial_bands=fft_num_radial_bands,
                 window_function=fft_window_function,
                 high_freq_emphasis=True,
                 feature_dim=fft_feature_dim
             )
-            """FFT Numpy based feature extractor"""
 
         self.fusion_mlp: FusionMLP = FusionMLP(
             input_dim=self.combined_dim,
