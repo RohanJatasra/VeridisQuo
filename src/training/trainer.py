@@ -4,7 +4,7 @@ Trainer module for DeepFakeDetector model training.
 
 import torch
 import torch.nn as nn
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Tuple, Union
 from pathlib import Path
@@ -12,6 +12,7 @@ import logging
 from datetime import datetime
 from tqdm import tqdm
 import wandb
+import numpy as np
 
 from data.dataset import FaceDataset
 from data.dataloader import DataLoaderWrapper
@@ -47,26 +48,29 @@ class TrainingConfig:
 
     # Training hyperparameters
     batch_size: int = 64 # Optimal for GPU 16GB (use 16 if GPU 8GB)
-    learning_rate: float = 1e-4  # Conservative LR to prevent NaN loss
+    learning_rate: float = 1e-4  # Maximum learning rate
+    min_learning_rate: float = 1e-6  # Minimum learning rate for scheduler
     weight_decay: float = 1e-4  # Standard L2 regularization
-    num_epochs: int = 50  # Full training
+    num_epochs: int = 25  # Full training
     num_workers: int = 8
+    warmup_epochs: int = 3  # Number of warmup epochs
     # utils
     compile_model: bool = False
     seed : int = 42
-    use_automixed_precision: bool = True
+    use_automixed_precision: bool = False
 
     # Logging
     log_interval: int = 10
     eval_interval: int = 1  # Evaluate every N epochs
+    log_gradients: bool = True  # Log gradient histograms to wandb
+    log_weights: bool = True  # Log weight histograms to wandb
 
     # Model saving
     save_dir: str = str(MODEL_DIR)
-    save_best_only: bool = True
     model_name: str = "deepfake_detector"
 
     # Early stopping
-    early_stopping_patience: int = 10
+    early_stopping_patience: int = 5
 
     # Wandb
     wandb_project: str = "deepfake-detector"
@@ -96,16 +100,14 @@ class Trainer:
         self.logger = logging.getLogger("training.Trainer")
         self.device = self.config.device
 
-        # Initialize wandb
+        # Initialize wandb (will be configured later after model/dataloaders are created)
         self.wandb_run = None
-        if self.config.use_wandb:
-            self._init_wandb()
-            
+
         if self.config.seed is not None:
             torch.manual_seed(self.config.seed)
             if self.device.type == 'cuda':
                 torch.cuda.manual_seed_all(self.config.seed)
-        
+
         torch.set_float32_matmul_precision('high')
 
         # Load datasets
@@ -167,13 +169,8 @@ class Trainer:
         # GradScaler for mixed precision training
         self.scaler = torch.amp.GradScaler('cuda') if self.config.use_automixed_precision and self.device.type == 'cuda' else None
 
-        # Learning rate scheduler
-        self.scheduler = ReduceLROnPlateau(
-            self.optimizer,
-            mode='min',
-            factor=0.5,
-            patience=5,
-        )
+        # Learning rate scheduler with warmup + cosine annealing
+        self.scheduler = self._create_scheduler()
 
         # Training state
         self.current_epoch = 0
@@ -184,6 +181,10 @@ class Trainer:
 
         # Create save directory
         Path(self.config.save_dir).mkdir(parents=True, exist_ok=True)
+
+        # Initialize wandb now that model and dataloaders are ready
+        if self.config.use_wandb:
+            self._init_wandb()
 
         self.logger.info(
             f"Trainer initialized:\n"
@@ -196,6 +197,26 @@ class Trainer:
             f"  - Epochs: {self.config.num_epochs}"
         )
 
+    def _create_scheduler(self):
+        """
+        Create learning rate scheduler with warmup + cosine annealing.
+
+        Returns:
+            Learning rate scheduler
+        """
+        def lr_lambda(epoch):
+            # Warmup phase: linear increase from 0 to max_lr
+            if epoch < self.config.warmup_epochs:
+                return (epoch + 1) / self.config.warmup_epochs
+            # Cosine annealing phase: smooth decrease from max_lr to min_lr
+            else:
+                progress = (epoch - self.config.warmup_epochs) / max(1, self.config.num_epochs - self.config.warmup_epochs)
+                cosine_decay = 0.5 * (1 + np.cos(np.pi * progress))
+                lr_range = 1.0 - (self.config.min_learning_rate / self.config.learning_rate)
+                return (self.config.min_learning_rate / self.config.learning_rate) + lr_range * cosine_decay
+
+        return LambdaLR(self.optimizer, lr_lambda=lr_lambda)
+
     def _init_wandb(self) -> None:
         """Initialize Weights & Biases logging."""
         run_name = f"veridisquo-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
@@ -205,14 +226,26 @@ class Trainer:
             name=run_name,
             config={
                 "learning_rate": self.config.learning_rate,
+                "min_learning_rate": self.config.min_learning_rate,
                 "batch_size": self.config.batch_size,
                 "num_epochs": self.config.num_epochs,
+                "warmup_epochs": self.config.warmup_epochs,
                 "weight_decay": self.config.weight_decay,
                 "architecture": "DeepFakeDetector",
                 "optimizer": "AdamW",
+                "scheduler": "Warmup + Cosine Annealing",
+                "use_automixed_precision": self.config.use_automixed_precision,
             },
             reinit="finish_previous"
         )
+        # Watch model for gradient and parameter tracking
+        if self.config.log_gradients or self.config.log_weights:
+            log_freq = max(100, len(self.train_loader) // 10)  # Log ~10 times per epoch
+            wandb.watch(
+                self.model,
+                log="all" if self.config.log_gradients and self.config.log_weights else "gradients" if self.config.log_gradients else "parameters",
+                log_freq=log_freq
+            )
         self.logger.info(f"Wandb initialized: {self.wandb_run.name}")
 
     def train(self) -> Dict[str, float]:
@@ -237,17 +270,12 @@ class Trainer:
                 # Log metrics
                 self._log_metrics(train_metrics, val_metrics, epoch)
 
-                # Learning rate scheduling
-                self.scheduler.step(val_metrics['loss'])
-
-                # Check for improvement
+                # Check for improvement and save best model
                 if val_metrics['loss'] < self.best_val_loss:
                     self.best_val_loss = val_metrics['loss']
                     self.best_val_acc = val_metrics['accuracy']
                     self.epochs_without_improvement = 0
-
-                    if self.config.save_best_only:
-                        self._save_model(is_best=True)
+                    self._save_model(is_best=True)
                 else:
                     self.epochs_without_improvement += 1
 
@@ -258,18 +286,27 @@ class Trainer:
                     )
                     break
 
-            # Save checkpoint
-            if not self.config.save_best_only:
-                self._save_model(is_best=False)
+            # Learning rate scheduling (step after each epoch)
+            self.scheduler.step()
+
+            # Save latest checkpoint
+            self._save_model(is_latest=True)
 
         # Final evaluation on test set
         self.logger.info("Running final evaluation on test set...")
         test_metrics = self._evaluate(self.test_loader, "test")
 
-        # Save final model
-        self._save_model(is_best=False, final=True)
-
+        # Log final test metrics to wandb
         if self.wandb_run:
+            wandb.log({
+                "test/loss": test_metrics['loss'],
+                "test/accuracy": test_metrics['accuracy'],
+                "test/precision": test_metrics['precision'],
+                "test/recall": test_metrics['recall'],
+                "test/f1": test_metrics['f1'],
+            })
+            # Log confusion matrix
+            self._log_confusion_matrix(test_metrics)
             self.wandb_run.finish()
 
         self.logger.info(
@@ -342,6 +379,7 @@ class Trainer:
                     wandb.log({
                         "train/batch_loss": loss.item(),
                         "train/batch_acc": (correct.float() / images.size(0)).item(),
+                        "train/learning_rate": self.optimizer.param_groups[0]['lr'],
                         "global_step": self.global_step
                     })
 
@@ -468,6 +506,10 @@ class Trainer:
         metrics['loss'] = avg_loss
         metrics['accuracy'] = accuracy
 
+        # Store predictions and labels for confusion matrix
+        metrics['predictions'] = all_predictions_gpu
+        metrics['labels'] = all_labels_gpu
+
         self.logger.info(
             f"{split_name.upper()} - Loss: {avg_loss:.4f}, "
             f"Acc: {accuracy:.4f}, "
@@ -523,21 +565,44 @@ class Trainer:
         Returns:
             Dict[str, float]: metrics dictionary
         """
-        # Compute TP, FP, FN for class 0 (FAKE)
-        tp = ((predictions == 0) & (labels == 0)).sum().float()
-        fp = ((predictions == 0) & (labels == 1)).sum().float()
-        fn = ((predictions == 1) & (labels == 0)).sum().float()
+        # Compute TP, FP, FN, TN for both classes
+        # Class 0 (FAKE)
+        tp_fake = ((predictions == 0) & (labels == 0)).sum().float()
+        fp_fake = ((predictions == 0) & (labels == 1)).sum().float()
+        fn_fake = ((predictions == 1) & (labels == 0)).sum().float()
+        tn_fake = ((predictions == 1) & (labels == 1)).sum().float()
 
-        # Compute metrics on GPU
-        precision = tp / (tp + fp + 1e-10)
-        recall = tp / (tp + fn + 1e-10)
+        # Class 1 (REAL)
+        tp_real = ((predictions == 1) & (labels == 1)).sum().float()
+        fp_real = ((predictions == 1) & (labels == 0)).sum().float()
+        fn_real = ((predictions == 0) & (labels == 1)).sum().float()
+        tn_real = ((predictions == 0) & (labels == 0)).sum().float()
+
+        # Compute metrics for FAKE class (primary task)
+        precision = tp_fake / (tp_fake + fp_fake + 1e-10)
+        recall = tp_fake / (tp_fake + fn_fake + 1e-10)
         f1 = 2 * precision * recall / (precision + recall + 1e-10)
+
+        # Compute per-class metrics
+        precision_real = tp_real / (tp_real + fp_real + 1e-10)
+        recall_real = tp_real / (tp_real + fn_real + 1e-10)
+        f1_real = 2 * precision_real * recall_real / (precision_real + recall_real + 1e-10)
 
         # Single sync to CPU
         return {
             'precision': precision.item(),
             'recall': recall.item(),
-            'f1': f1.item()
+            'f1': f1.item(),
+            'precision_fake': precision.item(),
+            'recall_fake': recall.item(),
+            'f1_fake': f1.item(),
+            'precision_real': precision_real.item(),
+            'recall_real': recall_real.item(),
+            'f1_real': f1_real.item(),
+            'tp_fake': tp_fake.item(),
+            'fp_fake': fp_fake.item(),
+            'fn_fake': fn_fake.item(),
+            'tn_fake': tn_fake.item(),
         }
 
     def _log_metrics(
@@ -556,7 +621,8 @@ class Trainer:
         )
 
         if self.wandb_run:
-            wandb.log({
+            # Basic metrics
+            metrics_dict = {
                 "epoch": epoch + 1,
                 "train/loss": train_metrics['loss'],
                 "train/accuracy": train_metrics['accuracy'],
@@ -565,16 +631,66 @@ class Trainer:
                 "val/precision": val_metrics['precision'],
                 "val/recall": val_metrics['recall'],
                 "val/f1": val_metrics['f1'],
-                "learning_rate": self.optimizer.param_groups[0]['lr']
-            })
+                "learning_rate": self.optimizer.param_groups[0]['lr'],
+            }
 
-    def _save_model(self, is_best: bool = False, final: bool = False) -> None:
+            # Per-class metrics
+            if 'precision_fake' in val_metrics:
+                metrics_dict.update({
+                    "val/precision_fake": val_metrics['precision_fake'],
+                    "val/recall_fake": val_metrics['recall_fake'],
+                    "val/f1_fake": val_metrics['f1_fake'],
+                    "val/precision_real": val_metrics['precision_real'],
+                    "val/recall_real": val_metrics['recall_real'],
+                    "val/f1_real": val_metrics['f1_real'],
+                })
+
+            # Confusion matrix elements
+            if 'tp_fake' in val_metrics:
+                metrics_dict.update({
+                    "val/tp_fake": val_metrics['tp_fake'],
+                    "val/fp_fake": val_metrics['fp_fake'],
+                    "val/fn_fake": val_metrics['fn_fake'],
+                    "val/tn_fake": val_metrics['tn_fake'],
+                })
+
+            wandb.log(metrics_dict)
+
+            # Log confusion matrix visualization
+            self._log_confusion_matrix(val_metrics, prefix="val")
+
+    def _log_confusion_matrix(self, metrics: Dict, prefix: str = "test") -> None:
+        """
+        Log confusion matrix to wandb.
+
+        Args:
+            metrics: Dictionary containing predictions and labels
+            prefix: Prefix for wandb logging (e.g., "val" or "test")
+        """
+        if not self.wandb_run or 'predictions' not in metrics or 'labels' not in metrics:
+            return
+
+        # Move to CPU for wandb logging
+        predictions = metrics['predictions'].cpu().numpy()
+        labels = metrics['labels'].cpu().numpy()
+
+        # Create confusion matrix
+        wandb.log({
+            f"{prefix}/confusion_matrix": wandb.plot.confusion_matrix(
+                probs=None,
+                y_true=labels,
+                preds=predictions,
+                class_names=["FAKE", "REAL"]
+            )
+        })
+
+    def _save_model(self, is_best: bool = False, is_latest: bool = False) -> None:
         """
         Save model checkpoint.
 
         Args:
-            is_best: Whether this is the best model so far
-            final: Whether this is the final model
+            is_best: Whether this is the best model so far (lowest validation loss)
+            is_latest: Whether this is the latest model (most recent epoch)
         """
         checkpoint = {
             'epoch': self.current_epoch,
@@ -589,16 +705,14 @@ class Trainer:
         if is_best:
             path = Path(self.config.save_dir) / f"{self.config.model_name}_best.pth"
             torch.save(checkpoint, path)
-            self.logger.info(f"Saved best model to {path}")
+            self.logger.info(f"💾 Saved BEST model to {path} (val_loss: {self.best_val_loss:.4f})")
 
-        if final:
-            path = Path(self.config.save_dir) / f"{self.config.model_name}_final.pth"
+        if is_latest:
+            path = Path(self.config.save_dir) / f"{self.config.model_name}_latest.pth"
             torch.save(checkpoint, path)
-            self.logger.info(f"Saved final model to {path}")
-
-        if not is_best and not final:
-            path = Path(self.config.save_dir) / f"{self.config.model_name}_epoch{self.current_epoch + 1}.pth"
-            torch.save(checkpoint, path)
+            # Only log latest save every 10 epochs to reduce noise
+            if (self.current_epoch + 1) % 10 == 0:
+                self.logger.info(f"💾 Saved LATEST model to {path} (epoch {self.current_epoch + 1})")
 
     def load_checkpoint(self, checkpoint_path: str) -> None:
         """
