@@ -17,6 +17,7 @@ TEST_FACES_DIR = TEST_DATA_FOLDER / "faces"
 # Output folders
 OUTPUT_DIR = PROJECT_ROOT / "output"
 MODEL_DIR = OUTPUT_DIR / "models"
+LOGS_DIR = PROJECT_ROOT / "logs"
 
 # Face detection model
 FACE_DETECTION_MODEL_PATH = PROJECT_ROOT / "models" / "face_detection" / "face_detection.pt"
