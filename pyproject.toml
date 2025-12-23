@@ -38,3 +38,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.1.0",
+    "jupyter>=1.1.1",
+]
