@@ -16,11 +16,13 @@ TEST_FACES_DIR = TEST_DATA_FOLDER / "faces"
 
 # Output folders
 OUTPUT_DIR = PROJECT_ROOT / "output"
-MODEL_DIR = OUTPUT_DIR / "models"
+OUTPUT_MODEL_DIR = OUTPUT_DIR / "models"
 LOGS_DIR = PROJECT_ROOT / "logs"
 
 # Face detection model
-FACE_DETECTION_MODEL_PATH = PROJECT_ROOT / "models" / "face_detection" / "face_detection.pt"
+MODEL_DIR = PROJECT_ROOT / "models"
+FACE_DETECTION_MODEL_PATH = MODEL_DIR / "face_detection" / "face_detection.pt"
+VERIDISQUO_MODEL_PATH = MODEL_DIR / "veridisquo" / "veridisquo_40M.pth"
 
 # Preprocessed dataset folders (balanced and split)
 PREPROCESSED_DATASET_DIR = PROJECT_ROOT / "data" 
