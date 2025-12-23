@@ -1,13 +1,34 @@
+"""
+Frequency analysis utilities for VeridisQuo.
+
+This module provides utilities for frequency-domain analysis including:
+- Color space conversions (delegated to utils.images_utils)
+- Window functions for FFT preprocessing
+- Spectral analysis utilities
+- JPEG-style zigzag ordering for DCT
+"""
+
 import cv2
 import numpy as np
 from typing import Tuple, Dict
 import logging
 import torch
 
-logger = logging.getLogger("frequal.utils")
+# Import generic image utilities from utils module
+from utils.images_utils import (
+    convert_to_luminance as _convert_to_luminance,
+    convert_to_grayscale as _convert_to_grayscale,
+    convert_per_channel as _convert_per_channel,
+    is_grayscale as _is_grayscale,
+    is_bgr as _is_bgr,
+    torch_to_numpy as _torch_to_numpy
+)
+
+logger: logging.Logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
 
 def convert_to_luminance(image: np.ndarray) -> np.ndarray:
     """Convert RGB/BGR image to luminance (Y channel of YCbCr).
+    This is a wrapper around utils.images_utils.convert_to_luminance.
     Parameters:
         image (np.ndarray): input image [height, width, 3] in BGR format
     Returns:
@@ -15,22 +36,11 @@ def convert_to_luminance(image: np.ndarray) -> np.ndarray:
     Raises:
         ValueError: if image format is invalid
     """
-    try:
-        if is_grayscale(image):
-            return image
-        assert is_bgr(image), "Image must have 3 channels (BGR)"
-
-    except AssertionError as e:
-        logger.error(f"Invalid image for luminance conversion: {e}")
-        raise ValueError(f"Invalid image: {e}")
-
-    # Convert BGR to YCrCb and extract Y channel (luminance)
-    ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
-    return ycrcb[:, :, 0]
-
+    return _convert_to_luminance(image)
 
 def convert_to_grayscale(image: np.ndarray) -> np.ndarray:
     """Convert RGB/BGR image to grayscale.
+    This is a wrapper around utils.images_utils.convert_to_grayscale.
     Parameters:
         image (np.ndarray): input image [height, width, 3] in BGR format
     Returns:
@@ -38,19 +48,11 @@ def convert_to_grayscale(image: np.ndarray) -> np.ndarray:
     Raises:
         ValueError: if image format is invalid
     """
-    try:
-        if is_grayscale(image):
-            return image
-        assert is_bgr(image), "Image must have 3 channels (BGR)"
-
-    except AssertionError as e:
-        logger.error(f"Invalid image for grayscale conversion: {e}")
-        raise ValueError(f"Invalid image: {e}")
-
-    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    return _convert_to_grayscale(image)
 
 def convert_per_channel(image: np.ndarray) -> np.ndarray:
     """Convert RGB/BGR image to per-channel average representation.
+    This is a wrapper around utils.images_utils.convert_per_channel.
     Parameters:
         image (np.ndarray): input image [height, width, 3] in BGR format
     Returns:
@@ -58,21 +60,45 @@ def convert_per_channel(image: np.ndarray) -> np.ndarray:
     Raises:
         ValueError: if image format is invalid
     """
-    try:
-        if is_grayscale(image):
-            return image
-        assert is_bgr(image), "Image must have 3 channels (BGR)"
+    return _convert_per_channel(image)
 
-    except AssertionError as e:
-        logger.error(f"Invalid image for per-channel conversion: {e}")
-        raise ValueError(f"Invalid image: {e}")
+def is_grayscale(image: np.ndarray) -> bool:
+    """Check if the input image is grayscale.
+    This is a wrapper around utils.images_utils.is_grayscale.
+    Parameters:
+        image (np.ndarray): input image
+    Returns:
+        bool: True if the image is grayscale, False otherwise (including non valid images)
+    """
+    return _is_grayscale(image)
 
-    #Average across all channels (preserves more info than weighted conversion)
-    #This gives equal weight to all color channels for frequency analysis
-    channel_avg = np.mean(image, axis=2).astype(image.dtype)
-    return channel_avg
+def is_bgr(image: np.ndarray) -> bool:
+    """Check if the input image is in BGR format.
+    This is a wrapper around utils.images_utils.is_bgr.
+    Parameters:
+        image (np.ndarray): input image
+    Returns:
+        bool: True if the image is in BGR format, False otherwise (including non valid images)
+    """
+    return _is_bgr(image)
 
-def create_2d_window(shape: Tuple[int, int], window_type: str ="hann") -> np.ndarray:
+def torch_to_numpy(tensor: torch.Tensor) -> np.ndarray:
+    """Convert PyTorch tensor to NumPy array.
+    This is a wrapper around utils.images_utils.torch_to_numpy.
+    PyTorch's [batch, C, H, W] RGB format to OpenCV's [batch, H, W, C] BGR format
+    in [0, 255] range.
+    Parameters:
+        tensor (torch.Tensor): input tensor [batch, channels, height, width]
+            - Values in [0, 1] or [-1, 1]
+    Returns:
+        np.ndarray: NumPy array [batch, height, width, channels] in BGR format
+            - Values in [0, 255] as uint8
+    Raises:
+        ValueError: if tensor format is invalid
+    """
+    return _torch_to_numpy(tensor)
+
+def create_2d_window(shape: Tuple[int, int], window_type: str = "hann") -> np.ndarray:
     """Create 2D window function for FFT preprocessing to reduce spectral leakage.
     Parameters:
         shape (Tuple[int, int]): window shape (height, width)
@@ -111,10 +137,9 @@ def create_2d_window(shape: Tuple[int, int], window_type: str ="hann") -> np.nda
         case _:
             logger.error(f"Unknown window type: {window_type}")
             raise ValueError(f"Unknown window type: {window_type}")
-    
+
     window_2d = np.outer(window_h, window_w)
     return window_2d.astype(np.float32)
-
 
 def create_radial_mask(center: Tuple[int, int], shape: Tuple[int, int], radius: float) -> np.ndarray:
     """Create circular mask for radial frequency band extraction.
@@ -139,17 +164,16 @@ def create_radial_mask(center: Tuple[int, int], shape: Tuple[int, int], radius: 
     cy, cx = center
     h, w = shape
 
-    #coordinate grids
+    # Coordinate grids
     y, x = np.ogrid[:h, :w]
-    #distance from center
+    # Distance from center
     distance = np.sqrt((x - cx)**2 + (y - cy)**2)
 
     return distance <= radius
 
-
 def zigzag_indices(n: int) -> np.ndarray:
     """Generate zigzag scan indices for n*n block (JPEG-style DCT coefficient ordering).
-    From the top-left (DC coefficient) and alternating between diagonal directions to 
+    From the top-left (DC coefficient) and alternating between diagonal directions to
     traverse the block in order of increasing spatial frequency.
     Parameters:
         n (int): block size (n x n)
@@ -184,16 +208,12 @@ def zigzag_indices(n: int) -> np.ndarray:
 
     return np.array(indices, dtype=np.int32)
 
-
 def compute_spectral_stats(spectrum: np.ndarray) -> Dict[str, float]:
     """Compute comprehensive spectral statistics from magnitude spectrum.
-
     These statistics characterize the frequency distribution and are useful
     for detecting anomalies in deepfake images.
-
     Parameters:
         spectrum (np.ndarray): magnitude spectrum (any shape)
-
     Returns:
         Dict[str, float]: dictionary with spectral statistics
             - "centroid": spectral centroid (center of mass in frequency domain)
@@ -201,7 +221,6 @@ def compute_spectral_stats(spectrum: np.ndarray) -> Dict[str, float]:
             - "flatness": spectral flatness (measure of tonality vs noise)
             - "entropy": spectral entropy (measure of randomness)
             - "peak_freq": peak frequency location (index of maximum magnitude)
-
     Raises:
         ValueError: if spectrum is invalid
     """
@@ -265,7 +284,7 @@ def compute_spectral_stats(spectrum: np.ndarray) -> Dict[str, float]:
         "entropy": float(entropy),
         "peak_freq": peak_freq
     }
-    
+
 def format_image(image: np.ndarray) -> np.ndarray:
     """Format input image to ensure it is in the correct shape and type.
     OpenCV needs images with BGR or grayscale format [H, W, C] in [0, 255] range.
@@ -278,90 +297,27 @@ def format_image(image: np.ndarray) -> np.ndarray:
     """
     try:
         assert is_bgr(image), "Image must have 3 channels (BGR)"
-        
+
         if len(image.shape) == 2:
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-        
-        if image.dtype == np.float32 or image.dtype == np.float64: 
-            #denormalize to [0, 255] based on value range
+
+        if image.dtype == np.float32 or image.dtype == np.float64:
+            # Denormalize to [0, 255] based on value range
             if image.max() <= 1.0 and image.min() >= 0.0:
-                #normalized to [0, 1]
+                # Normalized to [0, 1]
                 image = (image * 255.0).astype(np.uint8)
-                
+
             elif image.min() < 0:
-                #normalized to [-1, 1]
+                # Normalized to [-1, 1]
                 image = ((image + 1.0) * 127.5).astype(np.uint8)
-            
+
             else:
-                #already in [0, 255] range
+                # Already in [0, 255] range
                 image = image.astype(np.uint8)
 
     except AssertionError as e:
-        logger.error(f"- format_image - Invalid image for formatting: {e}")
+        logger.error(f"Invalid image for formatting: {e}")
         raise ValueError(f"Invalid image: {e}")
 
-    logger.debug(f"- format_image - Formatted image successfully with shape {image.shape} and dtype {image.dtype}")
+    logger.debug(f"Formatted image successfully with shape {image.shape} and dtype {image.dtype}")
     return image
-
-def is_grayscale(image: np.ndarray) -> bool:
-    """Check if the input image is grayscale.
-    Parameters:
-        image (np.ndarray): input image
-    Returns:
-        bool: True if the image is grayscale, False otherwise (including non valid images)
-    """
-    if image is None or image.size == 0:
-        return False
-    return len(image.shape) == 2 or image.shape[2] == 1
-
-def is_bgr(image: np.ndarray) -> bool:
-    """Check if the input image is in BGR format.
-    Parameters:
-        image (np.ndarray): input image
-    Returns:
-        bool: True if the image is in BGR format, False otherwise (including non valid images)
-    """
-    if image is None or image.size == 0:
-        return False
-    return len(image.shape) == 3 and image.shape[2] == 3
-
-def torch_to_numpy(tensor: torch.Tensor) -> np.ndarray:
-    """Convert PyTorch tensor to NumPy array. PyTorch's [batch, C, H, W] RGB format
-    to OpenCV's [batch, H, W, C] BGR format in [0, 255] range.
-    Parameters:
-        tensor (torch.Tensor): input tensor [batch, channels, height, width]
-            - Values in [0, 1] or [-1, 1]
-    Returns:
-        np.ndarray: NumPy array [batch, height, width, channels] in BGR format
-            - Values in [0, 255] as uint8
-    Raises:
-        ValueError: if tensor format is invalid
-    """
-    try:
-        assert tensor is not None, "Tensor cannot be None"
-        assert len(tensor.shape) == 4, f"Tensor must be 4D [batch, C, H, W], got shape {tensor.shape}"
-        assert tensor.shape[1] == 3, f"Tensor must have 3 channels, got {tensor.shape[1]}"
-
-    except AssertionError as e:
-        logger.error(f"- torch_to_numpy - Invalid tensor: {e}")
-        raise ValueError(f"Invalid tensor: {e}")
-
-    #detach from computation graph and move to CPU
-    numpy_array = tensor.detach().cpu().numpy()
-
-    #transpose [batch, C, H, W] to [batch, H, W, C]
-    numpy_array = np.transpose(numpy_array, (0, 2, 3, 1))
-
-    #process each image in batch
-    batch_size = numpy_array.shape[0]
-    result = []
-    for i in range(batch_size):
-        img = format_image(numpy_array[i])
-        #OpenCV handles BGR, not RGB - reverse channel order
-        img_bgr = img[:, :, ::-1].copy()
-        result.append(img_bgr)
-
-    numpy_array_bgr = np.stack(result, axis=0)
-
-    logger.debug(f"- torch_to_numpy - Converted tensor to NumPy array with shape {numpy_array_bgr.shape}")
-    return numpy_array_bgr
