@@ -213,22 +213,27 @@ class TestFaceFeaturesConcatenatorGradientFlow:
         """Test that gradients are propagated through LayerNorm."""
         concatenator = FaceFeaturesConcatenator()
 
-        spatial = torch.randn(4, 1792, requires_grad=True)
-        frequency = torch.randn(4, 1024, requires_grad=True)
+        # Use larger batch size and MSE loss to ensure non-zero gradients
+        batch_size = 16
+        spatial = torch.randn(batch_size, 1792, requires_grad=True)
+        frequency = torch.randn(batch_size, 1024, requires_grad=True)
 
         output = concatenator(spatial, frequency)
 
-        #loss that produces gradients
-        loss = output.sum()
+        # Use MSE loss with a target to ensure gradients flow
+        target = torch.randn_like(output)
+        loss = torch.nn.functional.mse_loss(output, target)
         loss.backward()
 
-        # Gradients should exist and be non-zero (LayerNorm modifies gradients, so they won't be exactly 1)
+        # Gradients should exist and have correct shape
         assert spatial.grad is not None
         assert frequency.grad is not None
-        assert (spatial.grad.abs() > 0).any()
-        assert (frequency.grad.abs() > 0).any()
         assert spatial.grad.shape == spatial.shape
         assert frequency.grad.shape == frequency.shape
+
+        # With MSE loss and larger batch, gradients should be non-zero
+        assert (spatial.grad.abs() > 1e-10).any(), "Spatial gradients are all zero"
+        assert (frequency.grad.abs() > 1e-10).any(), "Frequency gradients are all zero"
 
 
 class TestFaceFeaturesConcatenatorDeviceCompatibility:
