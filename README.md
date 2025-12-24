@@ -54,7 +54,7 @@ uv run pytest tests/ -v
 
 ### Infrastructure
 We trained the model on an **RTX 3090** (with CUDA) for approximately **4 hours**.
-We used the GPU provider [vast.ai](https://vast.ai/)
+We used the GPU provider <a href="https://vast.ai/" target="_blank">vast.ai</a>
 
 The training file is located in the `training/trainer.py` module
 
@@ -80,7 +80,7 @@ The training file is located in the `training/trainer.py` module
 
 ### Source
 We started from an existing dataset found on Kaggle:  
-**[FaceForensics++ Dataset (C23)](https://www.kaggle.com/datasets/xdxd003/ff-c23)**
+**<a href="https://www.kaggle.com/datasets/xdxd003/ff-c23" target="_blank">FaceForensics++ Dataset (C23)</a>**
 
 Containing **7000 videos** with numerous deepfake techniques:
 <p>
@@ -91,7 +91,7 @@ Containing **7000 videos** with numerous deepfake techniques:
 </p>
 
 We extracted the frames and faces from these videos to create our dataset:  
-**[VeridisQuo Preprocessed Dataset](https://www.kaggle.com/datasets/gazeux330000/deepfake-dataset/settings)**
+**<a href="https://www.kaggle.com/datasets/gazeux330000/deepfake-dataset/settings" target="_blank">VeridisQuo Preprocessed Dataset</a>**
 
 </td>
 <td width="50%" valign="top">
@@ -128,11 +128,11 @@ We extracted the frames and faces from these videos to create our dataset:
 | `scheduler` | Warmup + Cosine Annealing |
 | `warmup_epochs` | 2 |
 | `use_automixed_precision` | false |
-| `loss_func` | Cross Entropy |
+| `loss_func` | *(to be specified)* |
 
 <br>
 <p align="center">
-  <a href="https://huggingface.co/Gazeux33/VeridisQuo/tree/main">
+  <a href="https://huggingface.co/Gazeux33/VeridisQuo/tree/main" target="_blank">
     <img src="https://img.shields.io/badge/🤗%20Model-VeridisQuo-yellow?style=for-the-badge" alt="HuggingFace Model"/>
   </a>
 </p>
