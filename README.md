@@ -48,29 +48,24 @@ uv run pytest tests/ -v
 
 
 ## Training
-
 <table>
 <tr>
 <td width="60%" valign="top">
 
 ### Infrastructure
+We trained the model on an **RTX 3090** (with CUDA) for approximately **4 hours**.
+We used the GPU provider [vast.ai](https://vast.ai/)
 
-Nous avons entraîné le modèle sur une **RTX 3090** (avec CUDA) pendant environ **4 heures**.
-
-Nous avons utilisé le provider de GPU [vast.ai](https://vast.ai/)
-
-Le fichier d'entraînement se situe dans le module `training/trainer.py`
+The training file is located in the `training/trainer.py` module
 
 </td>
-<td width="40%" align="center">
+<td width="40%" valign="middle">
 
-```
-┌─────────────────────┐
-│   NVIDIA RTX 3090   │
-│        CUDA         │
-│     ~4h training    │
-└─────────────────────┘
-```
+| Specs | |
+|:---------|:---|
+| **GPU** | ![GPU](https://img.shields.io/badge/RTX_3090-76B900?style=flat-square&logo=nvidia&logoColor=white) |
+| **Framework** | ![CUDA](https://img.shields.io/badge/CUDA-76B900?style=flat-square&logo=nvidia&logoColor=white) |
+| **Duration** | ![Training](https://img.shields.io/badge/~4h-blue?style=flat-square&logo=clockify&logoColor=white) |
 
 </td>
 </tr>
@@ -79,18 +74,15 @@ Le fichier d'entraînement se situe dans le module `training/trainer.py`
 ---
 
 ## Dataset
-
 <table>
 <tr>
 <td width="50%" valign="top">
 
 ### Source
-
-Nous sommes partis du dataset existant trouvé sur Kaggle :  
+We started from an existing dataset found on Kaggle:  
 **[FaceForensics++ Dataset (C23)](https://www.kaggle.com/datasets/xdxd003/ff-c23)**
 
-Contenant **7000 vidéos** avec de nombreuses techniques de deepfake :
-
+Containing **7000 videos** with numerous deepfake techniques:
 <p>
   <img src="https://img.shields.io/badge/Face2Face-6366f1?style=flat-square" alt="Face2Face"/>
   <img src="https://img.shields.io/badge/FaceShifter-22d3ee?style=flat-square" alt="FaceShifter"/>
@@ -98,21 +90,20 @@ Contenant **7000 vidéos** avec de nombreuses techniques de deepfake :
   <img src="https://img.shields.io/badge/NeuralTextures-f43f5e?style=flat-square" alt="NeuralTextures"/>
 </p>
 
-Nous avons extrait les frames et les visages de ces vidéos pour créer notre dataset :  
-**[VeridisQuo Dataset](https://www.kaggle.com/datasets/gazeux330000/deepfake-dataset/settings)**
+We extracted the frames and faces from these videos to create our dataset:  
+**[VeridisQuo Preprocessed Dataset](https://www.kaggle.com/datasets/gazeux330000/deepfake-dataset/settings)**
 
 </td>
 <td width="50%" valign="top">
 
 ### Distribution
-
 | Split | Samples | Ratio |
 |:-----:|--------:|:-----:|
-| **Train** | 499 965 | 70% |
-| **Test** | 107 620 | 15% |
-| **Eval** | 108 853 | 15% |
+| **Train** | 499,965 | 70% |
+| **Test** | 107,620 | 15% |
+| **Eval** | 108,853 | 15% |
 
-<p><strong>Total : 716 438 samples</strong></p>
+<p><strong>Total: 716,438 images</strong></p>
 
 </td>
 </tr>
@@ -120,14 +111,13 @@ Nous avons extrait les frames et les visages de ces vidéos pour créer notre da
 
 ---
 
-## Configuration & Résultats
-
+## Configuration & Results
 <table>
 <tr>
 <td width="30%" valign="top">
 
 ### Configuration
-| Paramètre | Valeur |
+| Parameter | Value |
 |:----------|:------:|
 | `batch_size` | 64 |
 | `learning_rate` | 0.0001 |
@@ -138,7 +128,7 @@ Nous avons extrait les frames et les visages de ces vidéos pour créer notre da
 | `scheduler` | Warmup + Cosine Annealing |
 | `warmup_epochs` | 2 |
 | `use_automixed_precision` | false |
-| `loss_func` | *(à préciser)* |
+| `loss_func` | Cross Entropy |
 
 <br>
 <p align="center">
@@ -146,10 +136,11 @@ Nous avons extrait les frames et les visages de ces vidéos pour créer notre da
     <img src="https://img.shields.io/badge/🤗%20Model-VeridisQuo-yellow?style=for-the-badge" alt="HuggingFace Model"/>
   </a>
 </p>
+
 </td>
 <td width="70%" valign="top">
 
-### Résultats
+### Results
 
 **Training Accuracy**
 <br>
@@ -160,12 +151,12 @@ Nous avons extrait les frames et les visages de ces vidéos pour créer notre da
 <img src="./assets/training/train_loss.png" alt="Training Loss" width="400">
 
 <!--**Validation Accuracy**
- <br>
+<br>
 <img src="./assets/training/val_acc.png" alt="Validation Accuracy" width="400">
 
 **Validation Loss**
 <br>
-<img src="./assets/training/val_loss.png" alt="Validation Loss" width="400"> --> 
+<img src="./assets/training/val_loss.png" alt="Validation Loss" width="400">-->
 
 </td>
 </tr>
