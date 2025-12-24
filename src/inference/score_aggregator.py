@@ -110,7 +110,7 @@ class ScoreAggregator:
             metadata=metadata
         )
         
-    def identify_labels(self, frame_results: List[InferenceResult]) -> set[str]:
+    def check_labels(self, frame_results: List[InferenceResult]) -> set[str]:
         """Identify unique labels present in frame results. And assert that 
         all frames contain the same set of labels.
         Doing so allows dynamic handling of multi-class scenarios.
@@ -145,7 +145,7 @@ class ScoreAggregator:
         Returns:
             Tuple[str, float, Dict]: (prediction, confidence, metadata)
         """
-        predictions = self.identify_labels(frame_results)
+        predictions = self.check_labels(frame_results)
         
         counts: Dict[str, int] = {label: 0 for label in predictions}
         for result in frame_results:
@@ -174,11 +174,12 @@ class ScoreAggregator:
             Tuple[str, float, Dict]: (prediction, confidence, metadata)
             List[Tuple[str, float, Dict]]: (prediction, confidence, metadata) for each label if multi-class
         """
-        predictions = self.identify_labels(frame_results)
+        _ = self.check_labels(frame_results) #ensure consistent labels
             
         avg_confidence_scores : Dict[str, float] = {}
-        for label, scores in frame_results.probabilities.items():
-            if scores:
+        for label in frame_results[0].probabilities.keys():
+            scores = [frame.probabilities[label] for frame in frame_results]
+            if scores is not None and len(scores) > 0:
                 avg_confidence_scores[label] = sum(scores) / len(scores)
             else:
                 avg_confidence_scores[label] = 0.0
@@ -212,62 +213,72 @@ class ScoreAggregator:
             self.logger.warning("No predictions above the specified threshold")
             return "UNKNOWN", 0.0, metadata
 
-    def _aggregate_weighted_average(self, frame_results: List[InferenceResult]) -> Tuple[str, float, Dict[str, Any]]:
+    def _aggregate_weighted_average(self, 
+        frame_results: List[InferenceResult],
+        threshold: float =0.5
+    ) -> Union[Tuple[str, float, Dict[str, Any]], List[Tuple[str, float, Dict[str, Any]]]]:
         """Weighted average aggregation. Supports multi-class scenarios.
         Parameters:
             frame_results (List[InferenceResult]): Frame predictions
+            threshold (float): Threshold to retain the prediction.
         Returns:
             Tuple[str, float, Dict]: (prediction, confidence, metadata)
         """
-        predictions = self.identify_labels(frame_results)
+        labels = self.check_labels(frame_results) #ensure consistent labels
         
-        weighted_sum = 0.0
-        total_weight = 0.0
+        weights: Dict[str, float] = {label: 0.0 for label in labels}
+        weighted_scores: Dict[str, float] = {label: 0.0 for label in labels}
+        
+        for frame in frame_results:
+            for label in labels:
+                prob = frame.probabilities[label]
+                weight = frame.confidence
+                weighted_scores[label] += prob * weight
+                weights[label] += weight
 
-        counts: Dict[str, int] = {label: 0 for label in predictions}
-        for result in frame_results:
-            for label, prob in counts.items():
-                counts[label] += 1
-            
-            fake_prob = result.probabilities["FAKE"]
-            # Weight by the frame's confidence (max of REAL or FAKE probability)
-            weight = result.confidence
-            weighted_sum += fake_prob * weight
-            total_weight += weight
+        weighted_avg_scores: Dict[str, float] = {}
+        for label in labels:
+            if weights[label] > 0:
+                weighted_avg_scores[label] = weighted_scores[label] / weights[label]
+            else:
+                weighted_avg_scores[label] = 0.0
+        
+        prediction = max(weighted_avg_scores, key=weighted_avg_scores.get)
+        confidence = weighted_avg_scores[prediction]
 
-        weighted_avg_fake = weighted_sum / total_weight if total_weight > 0 else 0.5
+        metadata = {}
+        for label, score in weighted_avg_scores.items():
+            metadata[f"weighted_avg_confidence_{label}"] = score
+            metadata[f"total_weight_{label}"] = weights[label]
+        metadata[f"min_weighted_avg_confidence"] = min(weighted_avg_scores.values())
+        metadata[f"max_weighted_avg_confidence"] = max(weighted_avg_scores.values())
+        metadata[f"threshold_used"] = threshold
 
-        if weighted_avg_fake > 0.5:
-            prediction = "FAKE"
-            confidence = weighted_avg_fake
+        avg_above_threshold = {k: v for k, v in weighted_avg_scores.items() if v > threshold}
+        
+        if len(avg_above_threshold) == 0:
+            self.logger.warning("No predictions above the specified threshold")
+            return "UNKNOWN", 0.0, metadata
+
+        elif len(avg_above_threshold) > 1:
+            #multi-class scenario
+            results = []
+            for label, score in avg_above_threshold.items():
+                results.append((label, score, metadata))
+            return results
+        
         else:
-            prediction = "REAL"
-            confidence = 1 - weighted_avg_fake
+            #binary scenario
+            return prediction, confidence, metadata
 
-        metadata = {
-            "weighted_avg_fake": weighted_avg_fake,
-            "weighted_avg_real": 1 - weighted_avg_fake,
-            "total_weight": total_weight
-        }
-
-        return prediction, confidence, metadata
-
-    def _aggregate_max_confidence(
-        self,
-        frame_results: List[InferenceResult]
-    ) -> Tuple[str, float, Dict[str, Any]]:
-        """Maximum confidence aggregation.
-
-        Selects the prediction from the frame with highest confidence.
-        Useful when you trust the most confident prediction.
-
+    def _aggregate_max_confidence(self, frame_results: List[InferenceResult]) -> Tuple[str, float, Dict[str, Any]]:
+        """Maximum confidence aggregation. Supports multi-class scenarios.
         Parameters:
             frame_results (List[InferenceResult]): Frame predictions
-
         Returns:
             Tuple[str, float, Dict]: (prediction, confidence, metadata)
         """
-        # Find frame with maximum confidence
+        _ = self.check_labels(frame_results) #ensure consistent labels
         max_result = max(frame_results, key=lambda r: r.confidence)
 
         prediction = max_result.prediction
@@ -281,68 +292,56 @@ class ScoreAggregator:
 
         return prediction, confidence, metadata
 
-    def _aggregate_threshold(
-        self,
-        frame_results: List[InferenceResult]
-    ) -> Tuple[str, float, Dict[str, Any]]:
-        """Threshold-based aggregation.
-
-        Counts frames with FAKE probability above threshold.
-        If majority of frames exceed threshold, predicts FAKE.
-
+    def _aggregate_threshold(self, frame_results: List[InferenceResult], threshold: float = 0.5) -> Tuple[str, float, Dict[str, Any]]:
+        """Threshold-based aggregation. Supports multi-class scenarios.
         Parameters:
             frame_results (List[InferenceResult]): Frame predictions
-
+            threshold (float): Confidence threshold
         Returns:
             Tuple[str, float, Dict]: (prediction, confidence, metadata)
         """
-        above_threshold = 0
+        labels = self.check_labels(frame_results) #ensure consistent labels
         total = len(frame_results)
-
+        counts_above_threshold: Dict[str, int] = {label: 0 for label in labels}
+        
         for result in frame_results:
-            if result.probabilities["FAKE"] > self.threshold:
-                above_threshold += 1
+            for label in labels:
+                if result.probabilities[label] > threshold:
+                    counts_above_threshold[label] += 1
+                    
+        ratio_above_threshold: Dict[str, float] = {label: counts_above_threshold[label] / total for label in labels}
 
-        ratio_above_threshold = above_threshold / total
-
-        # If more than half the frames are above threshold, predict FAKE
-        if ratio_above_threshold > 0.5:
-            prediction = "FAKE"
-            confidence = ratio_above_threshold
+        if any(ratio > 0.5 for ratio in ratio_above_threshold.values()):
+            prediction = max(ratio_above_threshold, key=ratio_above_threshold.get)
+            confidence = ratio_above_threshold[prediction]
+        
         else:
-            prediction = "REAL"
-            confidence = 1 - ratio_above_threshold
-
-        metadata = {
-            "threshold_used": self.threshold,
-            "frames_above_threshold": above_threshold,
-            "ratio_above_threshold": ratio_above_threshold,
-            "frames_below_threshold": total - above_threshold
-        }
+            prediction = "NONE"
+            confidence = 0.0
+        
+        metadata = {}
+        for label, count in counts_above_threshold.items():
+            metadata[f"count_above_threshold_{label}"] = count
+            metadata[f"ratio_above_threshold_{label}"] = ratio_above_threshold[label]
+        metadata[f"threshold_used"] = threshold
+        metadata[f"total_frames"] = total
+        metadata[f"frames_below_threshold"] = total - sum(counts_above_threshold.values())
 
         return prediction, confidence, metadata
 
     @staticmethod
-    def compare_methods(
+    def compare_methods(cls,
         frame_results: List[InferenceResult],
         methods: List[str] = None
     ) -> Dict[str, AggregatedScore]:
         """Compare multiple aggregation methods on the same frame results.
-
         Useful for analyzing which aggregation strategy works best.
-
         Parameters:
             frame_results (List[InferenceResult]): Frame predictions
             methods (List[str], optional): Methods to compare.
                 If None, compares all available methods.
-
         Returns:
             Dict[str, AggregatedScore]: Results for each method
-
-        Example:
-            >>> results = ScoreAggregator.compare_methods(frame_results)
-            >>> for method, score in results.items():
-            ...     print(f"{method}: {score.prediction} ({score.confidence:.2%})")
         """
         if methods is None:
             methods = ScoreAggregator.AVAILABLE_METHODS
