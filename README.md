@@ -49,47 +49,158 @@ uv run pytest tests/ -v
 
 ## Training
 
-Concernant le training du modele
-Nous avons entrainé le modele sur un RTX 3090 (avec cuda) pendatn environ 4h. Nous avons utilisé le provider de gpu [vast.ai](https://vast.ai/)
+<table>
+<tr>
+<td width="60%" valign="top">
 
-Concernant les données . Nous somme partie du dataset existant trouvé sur kaggle [FaceForensics++ Dataset (C23)](https://www.kaggle.com/datasets/xdxd003/ff-c23) contenant en tout 7000 videos avec des nombreuses techniques de deepfake comme : Face2Face , FaceShifter , FaceSwap , NeuralTextures.
-Nous avons extrait les frames et les visages de ces videos pour creer un dataset disponible sur : [VeridisQuo Dataset](https://www.kaggle.com/datasets/gazeux330000/deepfake-dataset/settings)
+### Infrastructure
 
-| type  | nb_sample | split |
-|-------|-----------|-------|
-| train | 499965    | 0.7   |
-| test  | 107620    | 0.15  |
-| eval  | 108853    | 0.15  |
+Nous avons entraîné le modèle sur une **RTX 3090** (avec CUDA) pendant environ **4 heures**.
 
-Concernant le fichier d'entrainement , il se situe dans le module ```training/trainer.py```
+Nous avons utilisé le provider de GPU [vast.ai](https://vast.ai/)
 
-Nous avons utilisé la config suivante : 
+Le fichier d'entraînement se situe dans le module `training/trainer.py`
 
-| Paramètre                | Valeur                   |
-|--------------------------|--------------------------|
-| batch_size               | 64                       |
-| learning_rate            | 0.0001                   |
-| min_learning_rate        | 0.000001                 |
-| num_epochs               | 7                        |
-| optimizer                | AdamW                    |
-| scheduler                | Warmup + Cosine Annealing|
-| use_automixed_precision  | false                    |
-| warmup_epochs            | 2                        |
-| weight_decay             | 0.0001                   |
-| loss_func                | *(à préciser)*           |
+</td>
+<td width="40%" align="center">
 
+```
+┌─────────────────────┐
+│   NVIDIA RTX 3090   │
+│        CUDA         │
+│     ~4h training    │
+└─────────────────────┘
+```
 
-Le modele est maintenant disponible sur huggingFace: [VeridisQuo Model](https://huggingface.co/Gazeux33/VeridisQuo/tree/main)
+</td>
+</tr>
+</table>
 
-![image](./assets/training/train_acc.png)
-![image](./assets/training/train_loss.png)
-![image](./assets/training/val_acc.png)
-![image](./assets/training/val_loss.png)
-![image](./assets/training/train_lr.png)
+---
 
+## Dataset
 
+<table>
+<tr>
+<td width="50%" valign="top">
 
+### Source
 
+Nous sommes partis du dataset existant trouvé sur Kaggle :  
+**[FaceForensics++ Dataset (C23)](https://www.kaggle.com/datasets/xdxd003/ff-c23)**
+
+Contenant **7000 vidéos** avec de nombreuses techniques de deepfake :
+
+<p>
+  <img src="https://img.shields.io/badge/Face2Face-6366f1?style=flat-square" alt="Face2Face"/>
+  <img src="https://img.shields.io/badge/FaceShifter-22d3ee?style=flat-square" alt="FaceShifter"/>
+  <img src="https://img.shields.io/badge/FaceSwap-a855f7?style=flat-square" alt="FaceSwap"/>
+  <img src="https://img.shields.io/badge/NeuralTextures-f43f5e?style=flat-square" alt="NeuralTextures"/>
+</p>
+
+Nous avons extrait les frames et les visages de ces vidéos pour créer notre dataset :  
+**[VeridisQuo Dataset](https://www.kaggle.com/datasets/gazeux330000/deepfake-dataset/settings)**
+
+</td>
+<td width="50%" valign="top">
+
+### Distribution
+
+| Split | Samples | Ratio |
+|:-----:|--------:|:-----:|
+| **Train** | 499 965 | 70% |
+| **Test** | 107 620 | 15% |
+| **Eval** | 108 853 | 15% |
+
+<p align="center"><strong>Total : 716 438 samples</strong></p>
+
+</td>
+</tr>
+</table>
+
+---
+
+## Configuration & Résultats
+
+<table>
+<tr>
+<td width="30%" valign="top">
+
+### Configuration
+
+| Paramètre | Valeur |
+|:----------|:------:|
+| `batch_size` | 64 |
+| `learning_rate` | 0.0001 |
+| `min_learning_rate` | 0.000001 |
+| `num_epochs` | 7 |
+| `weight_decay` | 0.0001 |
+| `optimizer` | AdamW |
+| `scheduler` | Warmup + Cosine Annealing |
+| `warmup_epochs` | 2 |
+| `use_automixed_precision` | false |
+| `loss_func` | *(à préciser)* |
+
+<br>
+
+<p align="center">
+  <a href="https://huggingface.co/Gazeux33/VeridisQuo/tree/main">
+    <img src="https://img.shields.io/badge/🤗%20Model-VeridisQuo-yellow?style=for-the-badge" alt="HuggingFace Model"/>
+  </a>
+</p>
+
+</td>
+<td width="70%" valign="top">
+
+### Résultats
+
+<table>
+<tr>
+<td align="center">
+
+**Training Accuracy**
+
+![Training Accuracy](./assets/training/train_acc.png)
+
+</td>
+<td align="center">
+
+**Training Loss**
+
+![Training Loss](./assets/training/train_loss.png)
+
+</td>
+</tr>
+<tr>
+<td align="center">
+
+**Validation Accuracy**
+
+![Validation Accuracy](./assets/training/val_acc.png)
+
+</td>
+<td align="center">
+
+**Validation Loss**
+
+![Validation Loss](./assets/training/val_loss.png)
+
+</td>
+</tr>
+<tr>
+<td colspan="2" align="center">
+
+**Learning Rate Schedule**
+
+![Learning Rate](./assets/training/train_lr.png)
+
+</td>
+</tr>
+</table>
+
+</td>
+</tr>
+</table>
 
 
 
