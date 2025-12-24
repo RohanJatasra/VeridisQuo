@@ -43,6 +43,56 @@ uv sync --extra dev
 uv run pytest tests/ -v
 ```
 
+
+
+
+
+## Training
+
+Concernant le training du modele
+Nous avons entrainé le modele sur un RTX 3090 (avec cuda) pendatn environ 4h. Nous avons utilisé le provider de gpu [vast.ai](https://vast.ai/)
+
+Concernant les données . Nous somme partie du dataset existant trouvé sur kaggle [FaceForensics++ Dataset (C23)](https://www.kaggle.com/datasets/xdxd003/ff-c23) contenant en tout 7000 videos avec des nombreuses techniques de deepfake comme : Face2Face , FaceShifter , FaceSwap , NeuralTextures.
+Nous avons extrait les frames et les visages de ces videos pour creer un dataset disponible sur : [VeridisQuo Dataset](https://www.kaggle.com/datasets/gazeux330000/deepfake-dataset/settings)
+
+| type  | nb_sample | split |
+|-------|-----------|-------|
+| train | 499965    | 0.7   |
+| test  | 107620    | 0.15  |
+| eval  | 108853    | 0.15  |
+
+Concernant le fichier d'entrainement , il se situe dans le module ```training/trainer.py```
+
+Nous avons utilisé la config suivante : 
+
+| Paramètre                | Valeur                   |
+|--------------------------|--------------------------|
+| batch_size               | 64                       |
+| learning_rate            | 0.0001                   |
+| min_learning_rate        | 0.000001                 |
+| num_epochs               | 7                        |
+| optimizer                | AdamW                    |
+| scheduler                | Warmup + Cosine Annealing|
+| use_automixed_precision  | false                    |
+| warmup_epochs            | 2                        |
+| weight_decay             | 0.0001                   |
+| loss_func                | *(à préciser)*           |
+
+
+Le modele est maintenant disponible sur huggingFace: [VeridisQuo Model](https://huggingface.co/Gazeux33/VeridisQuo/tree/main)
+
+![image](./assets/training/train_acc.png)
+![image](./assets/training/train_loss.png)
+![image](./assets/training/val_acc.png)
+![image](./assets/training/val_loss.png)
+![image](./assets/training/train_lr.png)
+
+
+
+
+
+
+
 ## Project Structure
 ```
 veridisquo/
