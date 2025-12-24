@@ -112,7 +112,7 @@ Nous avons extrait les frames et les visages de ces vidéos pour créer notre da
 | **Test** | 107 620 | 15% |
 | **Eval** | 108 853 | 15% |
 
-<p align="center"><strong>Total : 716 438 samples</strong></p>
+<p><strong>Total : 716 438 samples</strong></p>
 
 </td>
 </tr>
@@ -127,7 +127,6 @@ Nous avons extrait les frames et les visages de ces vidéos pour créer notre da
 <td width="30%" valign="top">
 
 ### Configuration
-
 | Paramètre | Valeur |
 |:----------|:------:|
 | `batch_size` | 64 |
@@ -142,66 +141,35 @@ Nous avons extrait les frames et les visages de ces vidéos pour créer notre da
 | `loss_func` | *(à préciser)* |
 
 <br>
-
 <p align="center">
   <a href="https://huggingface.co/Gazeux33/VeridisQuo/tree/main">
     <img src="https://img.shields.io/badge/🤗%20Model-VeridisQuo-yellow?style=for-the-badge" alt="HuggingFace Model"/>
   </a>
 </p>
-
 </td>
 <td width="70%" valign="top">
 
 ### Résultats
 
-<table>
-<tr>
-<td align="center">
-
 **Training Accuracy**
-
-![Training Accuracy](./assets/training/train_acc.png)
-
-</td>
-<td align="center">
+<br>
+<img src="./assets/training/train_acc.png" alt="Training Accuracy" width="400">
 
 **Training Loss**
+<br>
+<img src="./assets/training/train_loss.png" alt="Training Loss" width="400">
 
-![Training Loss](./assets/training/train_loss.png)
-
-</td>
-</tr>
-<tr>
-<td align="center">
-
-**Validation Accuracy**
-
-![Validation Accuracy](./assets/training/val_acc.png)
-
-</td>
-<td align="center">
+<!--**Validation Accuracy**
+ <br>
+<img src="./assets/training/val_acc.png" alt="Validation Accuracy" width="400">
 
 **Validation Loss**
-
-![Validation Loss](./assets/training/val_loss.png)
-
-</td>
-</tr>
-<tr>
-<td colspan="2" align="center">
-
-**Learning Rate Schedule**
-
-![Learning Rate](./assets/training/train_lr.png)
+<br>
+<img src="./assets/training/val_loss.png" alt="Validation Loss" width="400"> --> 
 
 </td>
 </tr>
 </table>
-
-</td>
-</tr>
-</table>
-
 
 
 ## Project Structure
