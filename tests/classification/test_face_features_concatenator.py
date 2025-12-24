@@ -90,8 +90,15 @@ class TestFaceFeaturesConcatenatorForward:
 
         output = concatenator(spatial, frequency)
 
-        expected = torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]])
-        assert torch.allclose(output, expected)
+        # After LayerNorm is applied, output should be normalized
+        # Check that output has correct shape
+        assert output.shape == (1, 7)
+
+        # Check that LayerNorm was applied: output should have mean≈0 and std≈1
+        output_mean = output.mean(dim=1)
+        output_std = output.std(dim=1, unbiased=False)
+        assert torch.allclose(output_mean, torch.zeros_like(output_mean), atol=1e-5)
+        assert torch.allclose(output_std, torch.ones_like(output_std), atol=1e-5)
 
     def test_forward_preserves_batch_dimension(self):
         """Test that batch dimension is preserved correctly."""
@@ -203,7 +210,7 @@ class TestFaceFeaturesConcatenatorGradientFlow:
         assert frequency.grad.shape == frequency.shape
 
     def test_gradient_magnitude(self):
-        """Test that gradients are propagated with correct magnitude."""
+        """Test that gradients are propagated through LayerNorm."""
         concatenator = FaceFeaturesConcatenator()
 
         spatial = torch.randn(4, 1792, requires_grad=True)
@@ -211,13 +218,17 @@ class TestFaceFeaturesConcatenatorGradientFlow:
 
         output = concatenator(spatial, frequency)
 
-        #loss that should produce gradient of 1 for each element
+        #loss that produces gradients
         loss = output.sum()
         loss.backward()
 
-        #gradient should be 1 for all elements (concatenation is identity operation)
-        assert torch.allclose(spatial.grad, torch.ones_like(spatial))
-        assert torch.allclose(frequency.grad, torch.ones_like(frequency))
+        # Gradients should exist and be non-zero (LayerNorm modifies gradients, so they won't be exactly 1)
+        assert spatial.grad is not None
+        assert frequency.grad is not None
+        assert (spatial.grad.abs() > 0).any()
+        assert (frequency.grad.abs() > 0).any()
+        assert spatial.grad.shape == spatial.shape
+        assert frequency.grad.shape == frequency.shape
 
 
 class TestFaceFeaturesConcatenatorDeviceCompatibility:

@@ -21,7 +21,7 @@ class TestFaceClassifierInitialization:
         assert classifier.input_dim == 2816
         assert classifier.num_classes == 2
         assert classifier.hidden_dims == [1024, 512, 256]
-        assert classifier.dropout_rate == 0.5
+        assert classifier.dropout_rate == 0.2
         assert classifier.use_batch_norm is True
 
     def test_init_with_custom_hidden_dims(self):
@@ -39,16 +39,18 @@ class TestFaceClassifierInitialization:
         """Test initialization without batch normalization."""
         classifier = FaceClassifier(input_dim=2816, use_batch_norm=False)
         assert classifier.use_batch_norm is False
-        #verify no BatchNorm layers in network
+        #verify no normalization layers in network
         has_batch_norm = any(isinstance(m, nn.BatchNorm1d) for m in classifier.classifier)
+        has_layer_norm = any(isinstance(m, nn.LayerNorm) for m in classifier.classifier)
         assert not has_batch_norm
+        assert not has_layer_norm
 
     def test_init_with_batch_norm(self):
         """Test initialization with batch normalization."""
         classifier = FaceClassifier(input_dim=2816, use_batch_norm=True)
-        #verify BatchNorm layers are present
-        has_batch_norm = any(isinstance(m, nn.BatchNorm1d) for m in classifier.classifier)
-        assert has_batch_norm
+        #verify LayerNorm layers are present (uses LayerNorm instead of BatchNorm for batch_size=1 support)
+        has_layer_norm = any(isinstance(m, nn.LayerNorm) for m in classifier.classifier)
+        assert has_layer_norm
 
     def test_init_with_different_dropout_rates(self):
         """Test initialization with different dropout rates."""
