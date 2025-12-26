@@ -1,0 +1,252 @@
+{
+  "_comment": "VeridisQuo Production Configuration - Complete parameter registry for inference engine deployment",
+  "_version": "1.0.0",
+  "_last_updated": "2025-12-24",
+
+  "paths": {
+    "_comment": "File paths and URLs for models and resources",
+    "project_root": "./",
+    "models": {
+      "deepfake_detection": {
+        "dir": "models/deepfake_detection",
+        "filename": "veridisquo_40M.pth",
+        "auto_download": true,
+        "huggingface": {
+          "repo_id": "Gazeux33/VeridisQuo",
+          "model_filename": "veridisquo_40M.pth",
+          "url": "https://huggingface.co/Gazeux33/VeridisQuo/resolve/main/veridisquo_40M.pth"
+        }
+      },
+      "face_detection": {
+        "path": "models/face_detection/face_detection.pt",
+        "enabled": true
+      },
+      "efficientnet": {
+        "_comment": "EfficientNet weights - null uses ImageNet pretrained",
+        "custom_weights_path": null,
+        "use_pretrained": true
+      },
+      "frequency_extractor": {
+        "_comment": "Custom weights for frequency feature extractor MLP fusion",
+        "fusion_weights_path": null
+      },
+      "classifier": {
+        "_comment": "Custom weights for final classifier MLP",
+        "weights_path": null
+      }
+    },
+    "output": {
+      "logs_dir": "logs",
+      "results_dir": "output"
+    }
+  },
+
+  "device": {
+    "_comment": "Device configuration for inference",
+    "type": "auto",
+    "_options": ["auto", "cpu", "cuda", "cuda:0", "cuda:1"],
+    "_description": "auto selects CUDA if available, otherwise CPU"
+  },
+
+  "model_architecture": {
+    "_comment": "DeepFakeDetector model architecture parameters",
+
+    "channel_mode": "luminance",
+
+    "spatial_features": {
+      "_comment": "EfficientNet-B4 for spatial feature extraction",
+      "name": "EfficientNet-B4",
+      "use_pretrained": true,
+      "output_dim": 1792,
+      "_description": "Pretrained on ImageNet, extracts spatial features from faces"
+    },
+
+    "frequency_features": {
+      "_comment": "FFT and DCT combined frequency analysis",
+      "use_gpu_extractors": true,
+      "_description": "Use PyTorch (GPU) vs NumPy (CPU) extractors",
+
+      "fft": {
+        "_comment": "Fast Fourier Transform parameters",
+        "feature_dim": 512,
+        "num_radial_bands": 8,
+        "window_function": "hann",
+        "high_freq_emphasis": true,
+        "epsilon": 1e-8,
+        "num_azimuthal_sectors": 0,
+        "high_freq_threshold_ratio": 0.5,
+        "artifact_num_radial_samples": 50,
+        "artifact_center_region_size": 20,
+        "artifact_edge_width": 5,
+        "default_smoothing_kernel_size": 5,
+        "energy_band_start_multiplier": 2,
+        "energy_band_end_multiplier": 3,
+        "_description": "FFT extracts frequency patterns using concentric radial bands"
+      },
+
+      "dct": {
+        "_comment": "Discrete Cosine Transform parameters",
+        "feature_dim": 512,
+        "block_size": 8,
+        "aggregation_method": "frequency_bands",
+        "num_frequency_bands": 4,
+        "high_freq_emphasis": true,
+        "epsilon": 1e-8,
+        "_description": "DCT divides image into blocks and extracts frequency coefficients"
+      },
+
+      "fusion": {
+        "_comment": "MLP fusion of FFT and DCT features",
+        "output_dim": 1024,
+        "hidden_dims": null,
+        "dropout_rate": 0.3,
+        "use_batch_norm": true,
+        "_description": "Combines FFT (512) + DCT (512) → 1024 features via MLP"
+      }
+    },
+
+    "concatenation": {
+      "_comment": "Concatenation of spatial and frequency features",
+      "spatial_dim": 1792,
+      "frequency_dim": 1024,
+      "_description": "EfficientNet (1792) + Frequency (1024) = 2816"
+    },
+
+    "classifier": {
+      "_comment": "Final MLP classifier for REAL/FAKE prediction",
+      "input_dim": 2816,
+      "num_classes": 2,
+      "hidden_dims": null,
+      "dropout_rate": 0.2,
+      "use_batch_norm": true,
+      "_description": "2816 → [1024, 512, 256] → 2 (REAL/FAKE logits)"
+    }
+  },
+
+  "preprocessing": {
+    "_comment": "Image and video preprocessing parameters",
+
+    "image": {
+      "target_size": [224, 224],
+      "_format": "[width, height]",
+      "normalization": {
+        "mean": [0.485, 0.456, 0.406],
+        "std": [0.229, 0.224, 0.225],
+        "_description": "ImageNet normalization statistics (RGB)"
+      },
+      "_description": "All images resized to 224x224 and normalized"
+    },
+
+    "face_detection": {
+      "_comment": "YOLO-based face detection for video inference",
+      "enabled": true,
+      "model_path": "models/face_detection/face_detection.pt",
+      "min_face_size": 40,
+      "confidence_threshold": 0.7,
+      "only_keep_top": true,
+      "_description": "Detects faces in frames, filters by size and confidence"
+    },
+
+    "face_extraction": {
+      "_comment": "Face region extraction and preprocessing",
+      "target_size": [224, 224],
+      "padding": 0,
+      "_padding_unit": "pixels",
+      "normalization_method": null,
+      "_normalization_options": ["zero_one", "minus_one_one", null],
+      "_description": "Extracts face region from frame with optional padding. Normalization handled by torchvision in InferenceEngine"
+    },
+
+    "frame_extraction": {
+      "_comment": "Video frame sampling parameters",
+      "frames_per_second": 1,
+      "_description": "Number of frames to extract per second of video",
+      "max_frames": null,
+      "_max_frames_description": "null means no limit, integer limits total frames analyzed",
+      "use_optimized": true,
+      "_optimized_description": "Use PyAV-based GPU-accelerated extractor (5-10x faster) if available"
+    }
+  },
+
+  "inference": {
+    "_comment": "Inference runtime parameters",
+
+    "batch_processing": {
+      "enabled": true,
+      "default_batch_size": 32,
+      "_description": "Batch multiple frames for GPU efficiency"
+    },
+
+    "video_inference": {
+      "_comment": "Video-specific inference settings",
+      "frames_per_second": 1,
+      "max_frames": null,
+      "use_optimized_extractor": true,
+      "aggregate_method": "majority"
+    },
+
+    "score_aggregation": {
+      "_comment": "ScoreAggregator parameters for video-level predictions",
+      "default_method": "majority",
+      "threshold": 0.5,
+      "_description": "Combines frame-level predictions into single video prediction"
+    },
+
+    "output_format": {
+      "_comment": "Inference result formatting",
+      "include_frame_results": true,
+      "include_metadata": true,
+      "include_raw_logits": false,
+      "_description": "Control verbosity of inference results"
+    }
+  },
+
+  "logging": {
+    "_comment": "Logging configuration",
+    "enabled": true,
+    "level": "DEBUG",
+    "format": "%(asctime)s - %(name)s.%(funcName)s - %(levelname)s - %(message)s - %(lineno)d",
+    "datefmt": "%Y-%m-%d %H:%M:%S",
+    "file": {
+      "enabled": true,
+      "path": "logs/app.log",
+      "backup_count": 5
+    },
+    "console": {
+      "enabled": true,
+      "level": "DEBUG"
+    }
+  },
+
+  "performance": {
+    "_comment": "Performance optimization settings",
+
+    "gpu": {
+      "enabled": "auto",
+      "cudnn_benchmark": true
+    },
+
+    "threading": {
+      "_comment": "CPU threading for NumPy operations",
+      "num_threads": null
+    },
+
+    "caching": {
+      "_comment": "Model and preprocessing caching",
+      "cache_preprocessed_frames": false,
+      "cache_extracted_features": false,
+      "_description": "Trade memory for speed by caching intermediate results"
+    }
+  },
+
+  "production": {
+    "_comment": "Production deployment specific settings",
+    "api": {
+      "enabled": false,
+      "host": "0.0.0.0",
+      "port": 8000,
+      "workers": 4,
+      "_description": "REST API configuration for production deployment"
+    }
+  }
+}
