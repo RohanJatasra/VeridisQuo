@@ -16,12 +16,11 @@ class AggregatedScore:
         frame_count (int): Number of frames aggregated
         metadata (Dict[str, Any]): Additional aggregation metadata
     """
-    prediction: str
-    confidence: float
+    prediction: Union[str, List[str]]
+    confidence: Union[float, List[float]]
     method: str
     frame_count: int
     metadata: Dict[str, Any]
-
 
 class ScoreAggregator:
     """Aggregates frame-level predictions into video-level predictions.
@@ -31,11 +30,6 @@ class ScoreAggregator:
     - weighted_average: Weighted average based on confidence
     - max_confidence: Prediction with highest confidence
     - threshold: Count frames above confidence threshold
-
-    Example:
-        >>> aggregator = ScoreAggregator(method="majority")
-        >>> result = aggregator.aggregate(frame_results)
-        >>> print(f"{result.prediction} (confidence: {result.confidence:.2%})")
     """
 
     AVAILABLE_METHODS: List[str] = [
@@ -47,10 +41,7 @@ class ScoreAggregator:
     ]
     """Available aggregation methods"""
 
-    def __init__(self,
-        method: str = "majority",
-        threshold: float = 0.5,
-    ):
+    def __init__(self, method: str ="majority"):
         """Initialize ScoreAggregator.
         Parameters:
             method (str): Aggregation method to use
@@ -59,7 +50,6 @@ class ScoreAggregator:
                 - "weighted_average": weighted average by confidence
                 - "max_confidence": prediction with max confidence
                 - "threshold": count frames above threshold
-            threshold (float): Confidence threshold for "threshold" method
         Raises:
             ValueError: if method is not in AVAILABLE_METHODS
         """
@@ -70,8 +60,9 @@ class ScoreAggregator:
             )
 
         self.method: str = method
-        self.threshold: float = threshold
+        """Aggregation method to use"""
         self.logger: logging.Logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
+        """Logger for the ScoreAggregator class"""
 
         self._aggregation_functions: Dict[str, Callable] = {
             "majority": self._aggregate_majority,
@@ -80,6 +71,7 @@ class ScoreAggregator:
             "max_confidence": self._aggregate_max_confidence,
             "threshold": self._aggregate_threshold
         }
+        """Mapping of method names to aggregation functions"""
 
     def aggregate(self, frame_results: List[InferenceResult]) -> AggregatedScore:
         """Aggregate frame-level predictions into video-level prediction.
@@ -97,9 +89,6 @@ class ScoreAggregator:
         self.logger.debug(f"Aggregating {len(frame_results)} frames using method '{self.method}'")
 
         aggregation_fn: callable = self._aggregation_functions[self.method]
-        prediction: str
-        confidence: float
-        metadata: Dict[str, Any]
         prediction, confidence, metadata = aggregation_fn(frame_results)
 
         return AggregatedScore(
@@ -155,10 +144,10 @@ class ScoreAggregator:
         total = len(frame_results)
         confidence = counts[max_label] / total
 
-        metadata = {}
-        for label, count in counts.items():
-            metadata[f"count_{label}"] = count
-            metadata[f"ratio_{label}"] = count / total
+        metadata = {
+            **{f"count_{label}": count for label, count in counts.items()},
+            **{f"ratio_{label}": count / total for label, count in counts.items()}
+        }
 
         return max_label, confidence, metadata
 
@@ -175,28 +164,22 @@ class ScoreAggregator:
             List[Tuple[str, float, Dict]]: (prediction, confidence, metadata) for each label if multi-class
         """
         _ = self.check_labels(frame_results) #ensure consistent labels
-            
-        avg_confidence_scores : Dict[str, float] = {}
-        for label in frame_results[0].probabilities.keys():
-            scores = [frame.probabilities[label] for frame in frame_results]
-            if scores is not None and len(scores) > 0:
-                avg_confidence_scores[label] = sum(scores) / len(scores)
-            else:
-                avg_confidence_scores[label] = 0.0
 
-        predictions_above_threshold = []
-        confidences_above_threshold = []
-        for label, avg_score in avg_confidence_scores.items():
-            if avg_score > threshold:
-                predictions_above_threshold.append(label)
-                confidences_above_threshold.append(avg_score)
-        
-        metadata = {}
-        for label, avg_score in avg_confidence_scores.items():
-            metadata[f"avg_confidence_{label}"] = avg_score
-        metadata[f"min_confidence"] = min(avg_confidence_scores.values())
-        metadata[f"max_confidence"] = max(avg_confidence_scores.values())
-        metadata[f"threshold_used"] = threshold
+        avg_confidence_scores = {
+            label: sum(frame.probabilities[label] for frame in frame_results) / len(frame_results)
+            for label in frame_results[0].probabilities.keys()
+        }
+
+        above_threshold = {label: score for label, score in avg_confidence_scores.items() if score > threshold}
+        predictions_above_threshold = list(above_threshold.keys())
+        confidences_above_threshold = list(above_threshold.values())
+
+        metadata = {
+            **{f"avg_confidence_{label}": avg_score for label, avg_score in avg_confidence_scores.items()},
+            "min_confidence": min(avg_confidence_scores.values()),
+            "max_confidence": max(avg_confidence_scores.values()),
+            "threshold_used": threshold
+        }
 
         if len(predictions_above_threshold) > 1:
             #multi-class scenario
@@ -246,13 +229,13 @@ class ScoreAggregator:
         prediction = max(weighted_avg_scores, key=weighted_avg_scores.get)
         confidence = weighted_avg_scores[prediction]
 
-        metadata = {}
-        for label, score in weighted_avg_scores.items():
-            metadata[f"weighted_avg_confidence_{label}"] = score
-            metadata[f"total_weight_{label}"] = weights[label]
-        metadata[f"min_weighted_avg_confidence"] = min(weighted_avg_scores.values())
-        metadata[f"max_weighted_avg_confidence"] = max(weighted_avg_scores.values())
-        metadata[f"threshold_used"] = threshold
+        metadata = {
+            **{f"weighted_avg_confidence_{label}": score for label, score in weighted_avg_scores.items()},
+            **{f"total_weight_{label}": weights[label] for label in labels},
+            "min_weighted_avg_confidence": min(weighted_avg_scores.values()),
+            "max_weighted_avg_confidence": max(weighted_avg_scores.values()),
+            "threshold_used": threshold
+        }
 
         avg_above_threshold = {k: v for k, v in weighted_avg_scores.items() if v > threshold}
         
@@ -318,14 +301,14 @@ class ScoreAggregator:
         else:
             prediction = "NONE"
             confidence = 0.0
-        
-        metadata = {}
-        for label, count in counts_above_threshold.items():
-            metadata[f"count_above_threshold_{label}"] = count
-            metadata[f"ratio_above_threshold_{label}"] = ratio_above_threshold[label]
-        metadata[f"threshold_used"] = threshold
-        metadata[f"total_frames"] = total
-        metadata[f"frames_below_threshold"] = total - sum(counts_above_threshold.values())
+
+        metadata = {
+            **{f"count_above_threshold_{label}": count for label, count in counts_above_threshold.items()},
+            **{f"ratio_above_threshold_{label}": ratio_above_threshold[label] for label in labels},
+            "threshold_used": threshold,
+            "total_frames": total,
+            "frames_below_threshold": total - sum(counts_above_threshold.values())
+        }
 
         return prediction, confidence, metadata
 
@@ -346,9 +329,9 @@ class ScoreAggregator:
         if methods is None:
             methods = ScoreAggregator.AVAILABLE_METHODS
 
-        comparison = {}
-        for method in methods:
-            aggregator = ScoreAggregator(method=method)
-            comparison[method] = aggregator.aggregate(frame_results)
+        comparison = {
+            method: ScoreAggregator(method=method).aggregate(frame_results)
+            for method in methods
+        }
 
         return comparison
