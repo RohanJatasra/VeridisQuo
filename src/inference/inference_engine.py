@@ -1,7 +1,8 @@
 from logging import getLogger, Logger
+import logging
 import torch
 from pathlib import Path
-from typing import Union, List, Optional, Tuple
+from typing import Union, List, Optional, Tuple, overload, Dict, Any
 import urllib.request
 import cv2
 import numpy as np
@@ -16,22 +17,16 @@ from config import (
     ONLY_KEEP_TOP_FACE, FACE_EXTRACT_PADDING
 )
 from torchvision import transforms
-from inference.results_dataclasses import InferenceResult, VideoInferenceResult
+from utils.results_dataclasses import InferenceResult, VideoInferenceResult
 from inference.score_aggregator import ScoreAggregator, AggregatedScore
+from inference.batch_prefetcher import BatchPrefetcher
 
 
 class InferenceEngine:
-    """Inference engine for VeridisQuo deepfake detection model.
-    Provides a complete pipeline for deepfake detection including:
-    - Automatic model downloading from Hugging Face
-    - Image preprocessing (resize, normalization)
-    - Inference on single images, batches, and videos
-    - Face detection integration for video analysis
-    - CPU/GPU support
-    """
+    """Inference engine for VeridisQuo deepfake detection model."""
 
     CLASS_LABELS: List[str] = ["REAL", "FAKE"]
-    """Class labels for model predictions"""
+    """Supported class labels for model predictions"""
  
     def __init__(self,
         model_path: Optional[Union[str, Path]] =None,
@@ -131,12 +126,12 @@ class InferenceEngine:
 
         self.face_extractor: FaceExtractor = FaceExtractor(
             target_size=self.image_size,
-            normalization=None,  # Pas de normalisation ici, gérée par torchvision
+            normalization=None,  #normalisation handled by torchvision
             padding=self.padding
         )
         """Face extractor for consistent preprocessing"""
-
-        #pipeline de normalisation torchvision (optimisé, support CPU/GPU)
+        
+        #torchvision normalization pipeline (optimized, supports CPU/GPU)
         self.transform: transforms.Compose = transforms.Compose([
             transforms.ToTensor(),  # [0, 255] uint8 → [0, 1] float32, [H,W,C] → [C,H,W]
             transforms.Normalize(mean=self.mean, std=self.std)  #ImageNet normalization
@@ -193,106 +188,311 @@ class InferenceEngine:
             self.logger.error(error_msg)
             raise RuntimeError(error_msg)
 
+    def _extract_face(self,
+        image: np.ndarray,
+        detections: List[Dict[str, Any]]
+    ) -> np.ndarray:
+        """Extract face region from image using detections.
+        Parameters:
+            image (np.ndarray): input image in BGR format [H, W, 3]
+            detections (List[Dict]): face detections from face_detector
+        Returns:
+            np.ndarray: extracted and preprocessed face region [224, 224, 3]
+        """
+        if detections:
+            #use the top face (highest confidence)
+            top_face = detections[0]
+            bbox = top_face['bbox']
+
+            #extract face region with padding
+            face_region, _ = self.face_extractor.extract_and_preprocess(
+                image, bbox, normalize=False
+            )
+        else:
+            #no face detected, use entire frame
+            face_region = self.face_extractor.preprocess_face(image, normalize=False)
+
+        return face_region
+
     def _preprocess_image(self, image: np.ndarray) -> torch.Tensor:
-        """Preprocess a single image for model input.
+        """Preprocess a single image (wrapper around batch method).
         Parameters:
             image (np.ndarray): Input image in BGR format [H, W, 3]
         Returns:
             torch.Tensor: Preprocessed image tensor [1, 3, 224, 224]
-        Raises:
-            ValueError: if image is invalid
         """
+        return self._preprocess_image_batch([image])  #[1, 3, 224, 224]
+
+    def _preprocess_image_batch(self, images: List[np.ndarray]) -> torch.Tensor:
+        """Preprocess a batch of images efficiently with batched operations.
+        Parameters:
+            images (List[np.ndarray]): list of images in BGR format [H, W, 3]
+        Returns:
+            torch.Tensor: batched preprocessed tensor [N, 3, 224, 224]
+        Raises:
+            RuntimeError: if all images fail preprocessing
+        """
+        #batch face detection wrapped into a single YOLO forward pass
+        if self.use_face_detection:
+            detections_batch = self.face_detector.detect_faces_batch(images)
+        else:
+            detections_batch = [[] for _ in images]
+
+        face_regions = []
+        for idx, (image, detections) in enumerate(zip(images, detections_batch)):
+            try:
+                face_region = self._extract_face(image, detections)
+                face_regions.append(face_region)
+                
+            except Exception as e:
+                self.logger.warning(f"Failed to extract face from image {idx}/{len(images)}: {e}, skipping frame")
+                continue
+
+        if not face_regions:
+            raise RuntimeError("All images in batch failed face extraction")
+
+        #batch transformations (BGR→RGB + ToTensor + Normalize)
+        face_rgbs = [cv2.cvtColor(face, cv2.COLOR_BGR2RGB) for face in face_regions]
+        tensors = [self.transform(face_rgb) for face_rgb in face_rgbs]
+
+        #batch tensor [N, 3, 224, 224]
+        batch_tensor = torch.stack(tensors, dim=0)
+
+        return batch_tensor
+
+    def _run_inference(self, preprocessed: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Run model inference on preprocessed tensor.
+        Parameters:
+            preprocessed (torch.Tensor): Preprocessed image tensor [N, 3, 224, 224]
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: (logits, probabilities, prediction) all on GPU
+        """
+        with torch.no_grad():
+            logits = self.model(preprocessed) #[N, 2]
+            prediction = self.model.classifier.predict(logits) #[N]
+            probabilities = self.model.classifier.predict_proba(logits) #[N, 2]
+        return logits, probabilities, prediction
+
+    def _predict_frame_batch(self, frames: List[np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Process a batch of frames with batched operations.
+        Parameters:
+            frames (List[np.ndarray]): List of frame images in BGR format [H, W, 3]
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: (logits, probabilities, prediction)
+                - logits: [N, 2] on GPU
+                - probabilities: [N, 2] on GPU
+                - prediction: [N] on GPU (class indices)
+        Raises:
+            ValueError: if frames list is empty
+            RuntimeError: if all frames fail preprocessing
+        """
+        if not frames:
+            raise ValueError("frames list cannot be empty")
+
+        #batch preprocessing (includes batched face detection + transforms)
+        batch_tensor = self._preprocess_image_batch(frames)  # [N, 3, 224, 224] CPU
+
+        #single GPU transfer for entire batch
+        batch_tensor = batch_tensor.to(self.device)
+
+        logits, probabilities, prediction = self._run_inference(batch_tensor)
+
+        return logits, probabilities, prediction
+
+    def _validate_file_path(self, file_path: Union[str, Path]) -> Path:
+        """Validate that file (video or image) path exists.
+        Parameters:
+            file_path (Union[str, Path]): Path to video file
+        Returns:
+            Path: Validated path object
+        Raises:
+            FileNotFoundError: if file doesn't exist
+        """
+        file_path = Path(file_path)
         try:
-            assert image is not None and image.size != 0, "Image is empty or None"
-        
-            #if face detection is available, detect and extract face
-            if self.use_face_detection:
-                detections = self.face_detector.detect_faces(image, return_landmarks=False)
-
-                if detections:
-                    #use the top face (highest confidence or largest area)
-                    top_face = detections[0]
-                    bbox = top_face['bbox']
-
-                    #extract face region with padding
-                    face_region, _ = self.face_extractor.extract_and_preprocess(
-                        image, bbox, normalize=False
-                    )
-                    self.logger.debug(f"Face detected at bbox: {bbox}")
-                    
-                else:
-                    #no face detected, resize entire image
-                    err_msg = "No face detected"
-                    self.logger.warning(err_msg)
-                    raise RuntimeWarning(err_msg) #falling to except block
-            
-            else:
-                err_msg = "Face detection not available"
-                self.logger.warning(err_msg)
-                raise RuntimeWarning(err_msg) #falling to except block
+            assert file_path.exists(), f"File not found: {file_path}"
             
         except AssertionError as e:
-            err_msg = "Invalid image: empty or None"
-            self.logger.error(err_msg)
-            raise ValueError(err_msg)
+            error_msg = f"Invalid parameters: {e}"
+            self.logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
         
-        except RuntimeWarning as w:
-            self.logger.warning(f"Face detection failed: {w}. Using entire frame.")
-            face_region = self.face_extractor.preprocess_face(image, normalize=False)
-            
-        #BGR to RGB for Torchvision
-        face_rgb = cv2.cvtColor(face_region, cv2.COLOR_BGR2RGB)
+        return file_path
 
-        #torchvision transforms => ToTensor + ImageNet normalization
-        preprocessed = self.transform(face_rgb)  #[3, 224, 224]
+    def _build_frame_result(self,
+        predicted_class: int,
+        probs_cpu: np.ndarray,
+        logits_cpu: np.ndarray,
+        frame_idx: int
+    ) -> InferenceResult:
+        """Build InferenceResult for a single frame from batch predictions.
+        Parameters:
+            predicted_class (int): Predicted class index
+            probs_cpu (np.ndarray): Probabilities array [N, 2]
+            logits_cpu (np.ndarray): Logits array [N, 2]
+            frame_idx (int): Index of frame in batch
+        Returns:
+            InferenceResult: Result object for the frame
+        """
+        confidence = float(probs_cpu[frame_idx, predicted_class])
+        prediction_label = self.CLASS_LABELS[predicted_class]
 
-        preprocessed = preprocessed.unsqueeze(0)  #[1, 3, 224, 224] (add batch dim)
+        prob_dict = {
+            label: float(probs_cpu[frame_idx, j])
+            for j, label in enumerate(self.CLASS_LABELS)
+        }
 
-        return preprocessed
+        return InferenceResult(
+            prediction=prediction_label,
+            confidence=confidence,
+            probabilities=prob_dict,
+            raw_logits=logits_cpu[frame_idx].tolist()
+        )
 
-    def predict_image(self, image_path: Union[str, Path]) -> InferenceResult:
+    def _process_video_batches(self, prefetcher: BatchPrefetcher) -> List[InferenceResult]:
+        """Process all batches from prefetcher and return frame results.
+        Parameters:
+            prefetcher (BatchPrefetcher): Initialized prefetcher with batches ready
+        Returns:
+            List[InferenceResult]: Results for all processed frames
+        Raises:
+            RuntimeError: if no frames were successfully processed
+        """
+        frame_results: List[InferenceResult] = []
+
+        try:
+            for batch_frames, batch_metadata in prefetcher:
+                try:
+                    logits, probabilities, predictions = self._predict_frame_batch(batch_frames)
+
+                    #single CPU transfer per batch
+                    probs_cpu = probabilities.cpu().numpy()  # [N, 2]
+                    logits_cpu = logits.cpu().numpy()  # [N, 2]
+                    predictions_cpu = predictions.cpu().numpy()  # [N]
+
+                    #build results for each frame in batch
+                    for i in range(len(batch_frames)):
+                        predicted_class = int(predictions_cpu[i])
+                        result = self._build_frame_result(predicted_class, probs_cpu, logits_cpu, i)
+                        frame_results.append(result)
+
+                        if self.logger.isEnabledFor(logging.DEBUG):
+                            self.logger.debug(
+                                f"Frame {batch_metadata[i]['frame_number']} @ "
+                                f"{batch_metadata[i]['timestamp']:.2f}s: "
+                                f"{result.prediction} ({result.confidence:.4f})"
+                            )
+
+                except Exception as e:
+                    self.logger.warning(f"Failed to process batch of {len(batch_frames)} frames: {e}")
+
+        finally:
+            prefetcher.stop()
+
+        if not frame_results:
+            raise RuntimeError("No frames were successfully processed")
+
+        return frame_results
+
+    def _aggregate_video_results(self,
+        frame_results: List[InferenceResult],
+        video_path: Path,
+        aggregation_method: str
+    ) -> VideoInferenceResult:
+        """Aggregate frame results into video-level prediction.
+        Parameters:
+            frame_results (List[InferenceResult]): Results for all frames
+            video_path (Path): Path to video file
+            aggregation_method (str): Aggregation method to use
+        Returns:
+            VideoInferenceResult: Aggregated video prediction
+        """
+        self.logger.info(f"Processed {len(frame_results)} frames from video")
+
+        aggregator = ScoreAggregator(method=aggregation_method)
+        aggregated = aggregator.aggregate(frame_results)
+
+        video_result = VideoInferenceResult(
+            video_path=str(video_path),
+            frame_results=frame_results,
+            aggregate_prediction=aggregated.prediction,
+            aggregate_confidence=aggregated.confidence,
+            num_frames_analyzed=len(frame_results),
+            aggregation_metadata={
+                "method": aggregated.method,
+                "frame_count": aggregated.frame_count,
+                **aggregated.metadata
+            }
+        )
+
+        self.logger.info(
+            f"Video prediction: {aggregated.prediction} "
+            f"(confidence: {aggregated.confidence:.4f}, "
+            f"method: {aggregation_method}, "
+            f"frames: {len(frame_results)})"
+        )
+
+        return video_result
+
+    def predict_image(self, image: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Run inference on a single image.
         Parameters:
-            image_path (str or Path): Path to the image file
+            image (np.ndarray): Image array [H, W, 3] in BGR format
         Returns:
-            InferenceResult: Prediction result with label, confidence, probabilities
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: (logits, probabilities, prediction)
+                - logits: [1, 2] on GPU
+                - probabilities: [1, 2] on GPU
+                - prediction: [1] on GPU (class index)
         Raises:
-            FileNotFoundError: if image file doesn't exist
             ValueError: if image is invalid
             RuntimeError: if inference fails
         """
-        image_path = Path(image_path)
-
-        if not image_path.exists():
-            raise FileNotFoundError(f"Image file not found: {image_path}")
-
         try:
-            # Load image with OpenCV (BGR format)
-            image = cv2.imread(str(image_path))
+            assert image is not None and image.size != 0, "Image is empty or None"
 
-            if image is None:
-                raise ValueError(f"Failed to load image: {image_path}")
+            preprocessed = self._preprocess_image(image)  #[1, 3, 224, 224]
+            preprocessed = preprocessed.to(self.device)
+            logits, probabilities, prediction = self._run_inference(preprocessed)
+            return logits, probabilities, prediction
+
+        except AssertionError as e:
+            error_msg = f"Invalid parameter: {e}"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        except Exception as e:
+            error_msg = f"Inference failed for image array: {e}"
+            self.logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def predict_image(self, image: Union[str, Path]) -> InferenceResult:
+        """Run inference on a single image.
+        Parameters:
+            image (str or Path): Path to the image file
+        Returns:
+            InferenceResult: Prediction result with confidence and probabilities.
+        Raises:
+            FileNotFoundError: if image file doesn't exist
+            RuntimeError: if inference fails
+        """
+        try:
+            image_path = self._validate_file_path(image)
+            image_array = cv2.imread(str(image_path))
+            assert image_array is not None, f"Failed to load image: {image_path}"
 
             self.logger.info(f"Processing image: {image_path.name}")
 
-            # Preprocess image
-            preprocessed = self._preprocess_image(image)  # [1, 3, 224, 224]
-            preprocessed = preprocessed.to(self.device)
+            #reuse ndarray implementation
+            logits, probabilities, prediction = self.predict_image(image_array)  # [1, 2], [1, 2], [1] on GPU
 
-            # Run inference
-            with torch.no_grad():
-                logits = self.model(preprocessed)  # [1, 2]
-                probabilities = torch.softmax(logits, dim=1)  # [1, 2]
-
-            # Extract results
+            #CPU transfer and result construction
             probs_cpu = probabilities.cpu().numpy()[0]  # [2]
             logits_cpu = logits.cpu().numpy()[0]  # [2]
+            predicted_class = int(prediction.cpu().item())  # Use prediction instead of argmax
 
-            predicted_class = int(probs_cpu.argmax())
             confidence = float(probs_cpu[predicted_class])
             prediction_label = self.CLASS_LABELS[predicted_class]
 
-            # Build probability dictionary
             prob_dict = {
                 label: float(prob)
                 for label, prob in zip(self.CLASS_LABELS, probs_cpu)
@@ -305,125 +505,21 @@ class InferenceEngine:
                 raw_logits=logits_cpu.tolist()
             )
 
-            self.logger.info(
-                f"Prediction: {prediction_label} (confidence: {confidence:.4f})"
-            )
+            self.logger.info(f"Predicted image: {prediction_label} (confidence: {confidence:.4f})")
 
             return result
-
+        
         except Exception as e:
-            error_msg = f"Inference failed for image {image_path}: {e}"
+            error_msg = f"Inference failed for image array: {e}"
             self.logger.error(error_msg)
             raise RuntimeError(error_msg) from e
-
-    def predict_image_batch(
-        self,
-        image_paths: List[Union[str, Path]],
-        batch_size: int = 8
-    ) -> List[InferenceResult]:
-        """Run inference on a batch of images.
-        Parameters:
-            image_paths (List[str or Path]): List of image file paths
-            batch_size (int): Batch size for processing (default: 8)
-        Returns:
-            List[InferenceResult]: List of prediction results
-        Raises:
-            ValueError: if image_paths is empty
-            RuntimeError: if inference fails
-        """
-        if not image_paths:
-            raise ValueError("image_paths cannot be empty")
-
-        self.logger.info(f"Processing batch of {len(image_paths)} images")
-
-        results = []
-
-        # Process in batches for memory efficiency
-        for i in range(0, len(image_paths), batch_size):
-            batch_paths = image_paths[i:i + batch_size]
-            batch_tensors = []
-            valid_indices = []
-
-            # Load and preprocess images
-            for idx, img_path in enumerate(batch_paths):
-                try:
-                    image = cv2.imread(str(img_path))
-
-                    if image is None:
-                        self.logger.warning(f"Failed to load image: {img_path}, skipping")
-                        results.append(InferenceResult(
-                            prediction="ERROR",
-                            confidence=0.0,
-                            probabilities={"REAL": 0.0, "FAKE": 0.0},
-                            raw_logits=[0.0, 0.0]
-                        ))
-                        continue
-
-                    preprocessed = self._preprocess_image(image)  # [1, 3, 224, 224]
-                    batch_tensors.append(preprocessed)
-                    valid_indices.append(len(results))
-
-                except Exception as e:
-                    self.logger.warning(f"Error preprocessing {img_path}: {e}, skipping")
-                    results.append(InferenceResult(
-                        prediction="ERROR",
-                        confidence=0.0,
-                        probabilities={"REAL": 0.0, "FAKE": 0.0},
-                        raw_logits=[0.0, 0.0]
-                    ))
-                    continue
-
-            if not batch_tensors:
-                continue
-
-            # Concatenate batch
-            batch_tensor = torch.cat(batch_tensors, dim=0)  # [N, 3, 224, 224]
-            batch_tensor = batch_tensor.to(self.device)
-
-            # Run inference
-            with torch.no_grad():
-                logits = self.model(batch_tensor)  # [N, 2]
-                probabilities = torch.softmax(logits, dim=1)  # [N, 2]
-
-            # Extract results
-            probs_cpu = probabilities.cpu().numpy()  # [N, 2]
-            logits_cpu = logits.cpu().numpy()  # [N, 2]
-
-            for j in range(len(batch_tensors)):
-                probs = probs_cpu[j]
-                logit = logits_cpu[j]
-
-                predicted_class = int(probs.argmax())
-                confidence = float(probs[predicted_class])
-                prediction_label = self.CLASS_LABELS[predicted_class]
-
-                prob_dict = {
-                    label: float(prob)
-                    for label, prob in zip(self.CLASS_LABELS, probs)
-                }
-
-                result = InferenceResult(
-                    prediction=prediction_label,
-                    confidence=confidence,
-                    probabilities=prob_dict,
-                    raw_logits=logit.tolist()
-                )
-
-                # Insert at the correct position
-                if valid_indices[j] == len(results):
-                    results.append(result)
-                else:
-                    results.insert(valid_indices[j], result)
-
-        self.logger.info(f"Batch inference complete: {len(results)} results")
-        return results
-
-    def predict_video(
-        self,
+        
+    def predict_video(self,
         video_path: Union[str, Path],
-        frames_per_second: Optional[int] = 1,
-        aggregation_method: str = "majority",
-        use_optimized_extractor: bool = True
+        frames_per_second: Optional[int] =1,
+        aggregation_method: str ="majority",
+        use_pyav_extractor: bool =True,
+        batch_size: int =8
     ) -> VideoInferenceResult:
         """Run inference on a video file.
         Parameters:
@@ -432,112 +528,40 @@ class InferenceEngine:
                 If None, processes all frames (can be slow).
             aggregation_method (str): Method to aggregate frame predictions.
                 Options: "majority", "average", "weighted_average", "max_confidence", "threshold"
-            use_optimized_extractor (bool): Whether to use OptimizedFramesExtractor (PyAV)
+            use_pyav_extractor (bool): Whether to use OptimizedFramesExtractor (PyAV)
+            batch_size (int): Number of frames to process in a single batch (default: 8)
         Returns:
             VideoInferenceResult: Aggregated video prediction result
         Raises:
             FileNotFoundError: if video file doesn't exist
             RuntimeError: if inference fails
         """
-        video_path = Path(video_path)
-
-        if not video_path.exists():
-            raise FileNotFoundError(f"Video file not found: {video_path}")
-
+        video_path = self._validate_video_path(video_path)
         self.logger.info(f"Processing video: {video_path.name}")
 
         try:
-            # Create frames extractor
+            #create frames extractor
             frames_extractor = create_frames_extractor(
                 video_path=str(video_path),
                 nb_fps=frames_per_second,
                 device=str(self.device),
-                use_optimized=use_optimized_extractor
+                use_optimized=use_pyav_extractor
             )
 
-            self.logger.info(
-                f"Extracting frames at {frames_per_second} FPS "
-                f"(video FPS: {frames_extractor.video_fps:.1f})"
+            self.logger.info(f"Extracting frames at {frames_per_second} FPS (video FPS: {frames_extractor.video_fps:.1f})")
+
+            #create prefetcher for async batch preparation
+            prefetcher = BatchPrefetcher(
+                frames_extractor.extract_frames(),
+                batch_size=batch_size,
+                prefetch_size=2
             )
+            prefetcher.start()
 
-            # Process frames
-            frame_results = []
-            frame_count = 0
+            frame_results = self._process_video_batches(prefetcher)
 
-            for frame, metadata in frames_extractor.extract_frames():
-                frame_count += 1
-
-                try:
-                    # Preprocess frame
-                    preprocessed = self._preprocess_image(frame)  # [1, 3, 224, 224]
-                    preprocessed = preprocessed.to(self.device)
-
-                    # Run inference
-                    with torch.no_grad():
-                        logits = self.model(preprocessed)  # [1, 2]
-                        probabilities = torch.softmax(logits, dim=1)  # [1, 2]
-
-                    # Extract results
-                    probs_cpu = probabilities.cpu().numpy()[0]  # [2]
-                    logits_cpu = logits.cpu().numpy()[0]  # [2]
-
-                    predicted_class = int(probs_cpu.argmax())
-                    confidence = float(probs_cpu[predicted_class])
-                    prediction_label = self.CLASS_LABELS[predicted_class]
-
-                    prob_dict = {
-                        label: float(prob)
-                        for label, prob in zip(self.CLASS_LABELS, probs_cpu)
-                    }
-
-                    result = InferenceResult(
-                        prediction=prediction_label,
-                        confidence=confidence,
-                        probabilities=prob_dict,
-                        raw_logits=logits_cpu.tolist()
-                    )
-
-                    frame_results.append(result)
-
-                    self.logger.debug(
-                        f"Frame {metadata['frame_number']} @ {metadata['timestamp']:.2f}s: "
-                        f"{prediction_label} ({confidence:.4f})"
-                    )
-
-                except Exception as e:
-                    self.logger.warning(f"Failed to process frame {frame_count}: {e}, skipping")
-                    continue
-
-            if not frame_results:
-                raise RuntimeError("No frames were successfully processed")
-
-            self.logger.info(f"Processed {len(frame_results)} frames from video")
-
-            # Aggregate frame predictions
-            aggregator = ScoreAggregator(method=aggregation_method)
-            aggregated = aggregator.aggregate(frame_results)
-
-            video_result = VideoInferenceResult(
-                video_path=str(video_path),
-                frame_results=frame_results,
-                aggregate_prediction=aggregated.prediction,
-                aggregate_confidence=aggregated.confidence,
-                num_frames_analyzed=len(frame_results),
-                aggregation_metadata={
-                    "method": aggregated.method,
-                    "frame_count": aggregated.frame_count,
-                    **aggregated.metadata
-                }
-            )
-
-            self.logger.info(
-                f"Video prediction: {aggregated.prediction} "
-                f"(confidence: {aggregated.confidence:.4f}, "
-                f"method: {aggregation_method}, "
-                f"frames: {len(frame_results)})"
-            )
-
-            return video_result
+            #aggregate and build final result
+            return self._aggregate_video_results(frame_results, video_path, aggregation_method)
 
         except Exception as e:
             error_msg = f"Video inference failed for {video_path}: {e}"
@@ -549,25 +573,32 @@ class InferenceEngine:
         video_paths: List[Union[str, Path]],
         frames_per_second: Optional[int] = 1,
         aggregation_method: str = "majority",
-        use_optimized_extractor: bool = True
+        use_pyav_extractor: bool = True,
+        batch_size: int = 8
     ) -> List[VideoInferenceResult]:
         """Run inference on a batch of videos.
         Parameters:
             video_paths (List[str or Path]): List of video file paths
             frames_per_second (int, optional): Number of frames to sample per second
             aggregation_method (str): Method to aggregate frame predictions
-            use_optimized_extractor (bool): Whether to use OptimizedFramesExtractor
+            use_pyav_extractor (bool): Whether to use OptimizedFramesExtractor
+            batch_size (int): Number of frames to process in a single batch (default: 8)
         Returns:
             List[VideoInferenceResult]: List of video prediction results
         Raises:
             ValueError: if video_paths is empty
         """
-        if not video_paths:
-            raise ValueError("video_paths cannot be empty")
+        try:
+            assert video_paths, "List of video paths cannot be empty"
+            
+        except AssertionError as e:
+            error_msg = f"Invalid parameter: {e}"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
 
         self.logger.info(f"Processing batch of {len(video_paths)} videos")
 
-        results = []
+        results: List[VideoInferenceResult] = []
 
         for video_path in video_paths:
             try:
@@ -575,22 +606,29 @@ class InferenceEngine:
                     video_path=video_path,
                     frames_per_second=frames_per_second,
                     aggregation_method=aggregation_method,
-                    use_optimized_extractor=use_optimized_extractor
+                    use_pyav_extractor=use_pyav_extractor,
+                    batch_size=batch_size
                 )
                 results.append(result)
 
+            except FileNotFoundError as e:
+                self.logger.warning(f"Video file not found: {video_path}, skipping.")      
+            
             except Exception as e:
                 self.logger.error(f"Failed to process video {video_path}: {e}")
-                # Create error result
+                
+            finally:  
+                #create error result
                 error_result = VideoInferenceResult(
                     video_path=str(video_path),
                     frame_results=[],
-                    aggregate_prediction="ERROR",
+                    aggregate_prediction="Inference Failed",
                     aggregate_confidence=0.0,
                     num_frames_analyzed=0,
                     aggregation_metadata={"error": str(e)}
                 )
                 results.append(error_result)
+                continue
 
         self.logger.info(f"Batch video inference complete: {len(results)} results")
         return results
