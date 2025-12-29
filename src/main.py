@@ -1,4 +1,4 @@
-import logging
+from logging import basicConfig, StreamHandler, FileHandler, getLogger, info
 import torch
 from dataset_builder.dataset_builder import DatasetBuilder
 from training.trainer import Trainer
@@ -9,42 +9,44 @@ from torchsummary import summary
 import time
 from datetime import datetime
 from pathlib import Path
-from config import LOGS_DIR
+from config import LOGS_DIR, LOG_FILE, LOG_LEVEL, LOG_FORMAT, LOG_DATEFMT
+from inference import InferenceEngine
 
-load_dotenv(find_dotenv())
-
-if __name__ == "__main__":
-
-    # Create logs directory if it doesn't exist
+def init_logging_system():
+    #create logs directory if it doesn't exist
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Generate unique log filename with timestamp
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = LOGS_DIR / f"training_{timestamp}.log"
-
-    # Configure logging to both console and file
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
+    
+    basicConfig(
+        filename=LOG_FILE, 
+        level=LOG_LEVEL, 
+        format=LOG_FORMAT,
+        datefmt=LOG_DATEFMT,
         handlers=[
-            logging.StreamHandler(),  # Console output
-            logging.FileHandler(log_file, mode='w', encoding='utf-8')  # File output
+            StreamHandler(),  #console output
+            FileHandler(LOG_FILE, mode='w', encoding='utf-8')  #file output
         ]
     )
 
-    # Log the file location
-    logging.info(f"Logging to file: {log_file}")
+if __name__ == "__main__":
+    load_dotenv(find_dotenv())
 
-    device = get_device()
+    init_logging_system()
+    logger = getLogger("/".join(__file__.split("/")[-2:]))
+
+    #log the file location
+    info(f"Logging initialized to file: {LOG_FILE.resolve()}")
+
+    # InferenceEngine()
+
+    # device = get_device()
     
-    model = DeepFakeDetector().to(device)
-    summary(model, (3,224,224))
+    # model = DeepFakeDetector().to(device)
+    # summary(model, (3,224,224))
     
 
-    trainer = Trainer()
-    print("strat training loop")
-    trainer.train()
+    # trainer = Trainer()
+    # print("strat training loop")
+    # trainer.train()
     
     
     

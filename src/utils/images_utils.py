@@ -94,7 +94,6 @@ def is_grayscale(image: np.ndarray) -> bool:
         return False
     return len(image.shape) == 2 or image.shape[2] == 1
 
-
 def is_bgr(image: np.ndarray) -> bool:
     """Check if the input image is in BGR format.
     Parameters:
@@ -105,7 +104,6 @@ def is_bgr(image: np.ndarray) -> bool:
     if image is None or image.size == 0:
         return False
     return len(image.shape) == 3 and image.shape[2] == 3
-
 
 def torch_to_numpy(tensor: torch.Tensor) -> np.ndarray:
     """Convert PyTorch tensor to NumPy array.

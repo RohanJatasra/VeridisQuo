@@ -16,7 +16,8 @@ class NpDCTExtractor(BaseDCTExtractor):
         channel_mode: str,
         aggregation_method: str,
         num_frequency_bands: int,
-        feature_dim: int
+        feature_dim: int,
+        epsilon: float = 1e-10
     ):
         """Initialize NpDCTExtractor.
         Parameters:
@@ -25,6 +26,7 @@ class NpDCTExtractor(BaseDCTExtractor):
             aggregation_method (str): how to aggregate block statistics
             num_frequency_bands (int): number of frequency bands to extract
             feature_dim (int): target output feature dimension
+            epsilon (float): small constant for numerical stability
         Raises:
             ValueError: if parameters are invalid
         """
@@ -34,7 +36,8 @@ class NpDCTExtractor(BaseDCTExtractor):
             aggregation_method=aggregation_method,
             num_frequency_bands=num_frequency_bands,
             feature_dim=feature_dim,
-            logger_name="frequal.DCTExtractor"
+            logger_name=("/".join(__file__.split("/")[-2:])),
+            epsilon=epsilon
         )
 
         #generate zigzag indices for block traversal (cached for efficiency)

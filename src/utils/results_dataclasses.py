@@ -1,12 +1,5 @@
-"""
-Data structures for inference results.
-
-This module defines the result classes for deepfake detection inference.
-"""
-
 from dataclasses import dataclass
 from typing import List, Dict
-
 
 @dataclass
 class InferenceResult:
@@ -22,7 +15,6 @@ class InferenceResult:
     confidence: float
     probabilities: Dict[str, float]
     raw_logits: List[float]
-
 
 @dataclass
 class VideoInferenceResult:

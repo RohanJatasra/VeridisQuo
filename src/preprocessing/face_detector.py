@@ -65,6 +65,103 @@ class FaceDetector:
             self.logger.fatal(f"Failed to initialize YOLO face detector: {e}")
             raise
 
+    def _process_single_result(
+        self,
+        result,
+        return_landmarks: bool = False
+    ) -> List[Dict[str, Any]]:
+        """Process a single YOLO result object into detection dictionaries.
+        Parameters:
+            result: YOLO result object for one image
+            return_landmarks (bool): whether to include facial landmarks
+        Returns:
+            List[Dict[str, Any]]: list of detection dictionaries for this image
+        """
+        if result.boxes is None or len(result.boxes) == 0:
+            return []
+
+        detections = []
+
+        #process each detection
+        for box in result.boxes:
+            confidence = float(box.conf[0])
+
+            #filter by confidence threshold
+            if confidence < self.confidence_threshold:
+                continue
+
+            #get bounding box in xyxy format and convert to xywh
+            xyxy = box.xyxy[0].cpu().numpy()
+            x1, y1, x2, y2 = xyxy
+            x, y = int(x1), int(y1)
+            width, height = int(x2 - x1), int(y2 - y1)
+
+            #filter by minimum face size
+            if width < self.min_face_size or height < self.min_face_size:
+                continue
+
+            detection = {
+                'bbox': [x, y, width, height],
+                'confidence': confidence
+            }
+
+            if return_landmarks:
+                detection['keypoints'] = {}
+
+            detections.append(detection)
+
+        if not detections:
+            return []
+
+        #sort by confidence (highest first)
+        detections.sort(key=lambda x: x['confidence'], reverse=True)
+
+        #keep only top detection if requested
+        if len(detections) > 1 and self.only_keep_top:
+            detections = [detections[0]]
+
+        return detections
+
+    def detect_faces_batch(
+        self,
+        images: List[np.ndarray],
+        return_landmarks: bool = False
+    ) -> List[List[Dict[str, Any]]]:
+        """Detect faces in multiple images with a single YOLO forward pass (batched).
+        Parameters:
+            images (List[np.ndarray]): list of images as numpy arrays (BGR format)
+            return_landmarks (bool): whether to include facial landmarks in results
+        Returns:
+            List[List[Dict[str, Any]]]: list of detection lists (one per image)
+        Raises:
+            ValueError: if images list is empty or contains invalid images
+        """
+        if not images:
+            raise ValueError("images list cannot be empty")
+
+        try:
+            #run YOLO inference on batch (single forward pass!)
+            results = self.detector(images, verbose=False, device=self.device)
+
+            if not results or len(results) == 0:
+                self.logger.debug("No results from YOLO batch inference")
+                return [[] for _ in images]
+
+            #process each result
+            all_detections = []
+            for idx, result in enumerate(results):
+                detections = self._process_single_result(result, return_landmarks)
+                all_detections.append(detections)
+
+                if detections:
+                    self.logger.debug(f"Image {idx}: detected {len(detections)} face(s)")
+
+            return all_detections
+
+        except Exception as e:
+            self.logger.error(f"Batch face detection failed: {e}")
+            return [[] for _ in images]
+
     def detect_faces(
         self,
         image: np.ndarray,
@@ -85,75 +182,30 @@ class FaceDetector:
         Raises:
             ValueError: if image is invalid
         """
-        # Validate input image
+        #validate input image
         if image is None or not isinstance(image, np.ndarray) or image.size == 0:
             self.logger.error("Invalid image provided for face detection")
             raise ValueError("Invalid image: must be a non-empty numpy array")
 
         try:
-            # Run YOLO inference
-            # verbose=False to suppress YOLO output
-            # device is already set in __init__, but we can pass it explicitly for clarity
+            #run YOLO inference
             results = self.detector(image, verbose=False, device=self.device)
 
             if not results or len(results) == 0:
                 self.logger.debug("No faces detected by YOLO")
                 return []
 
-            # Extract detections from first result (single image)
-            detections = []
-            result = results[0]
+            #process first result (single image) using helper method
+            detections = self._process_single_result(results[0], return_landmarks)
 
-            if result.boxes is None or len(result.boxes) == 0:
-                self.logger.debug("No faces detected")
-                return []
-
-            # Process each detection
-            for box in result.boxes:
-                confidence = float(box.conf[0])
-
-                # Filter by confidence threshold
-                if confidence < self.confidence_threshold:
-                    continue
-
-                # Get bounding box in xyxy format and convert to xywh
-                xyxy = box.xyxy[0].cpu().numpy()
-                x1, y1, x2, y2 = xyxy
-                x, y = int(x1), int(y1)
-                width, height = int(x2 - x1), int(y2 - y1)
-
-                # Filter by minimum face size
-                if width < self.min_face_size or height < self.min_face_size:
-                    continue
-
-                detection = {
-                    'bbox': [x, y, width, height],
-                    'confidence': confidence
-                }
-
-                # YOLO doesn't provide facial landmarks by default
-                # Return empty dict if landmarks are requested
-                if return_landmarks:
-                    detection['keypoints'] = {}
-
-                detections.append(detection)
-
-            if not detections:
+            if detections:
+                self.logger.debug(f"Detected {len(detections)} face(s)")
+            else:
                 self.logger.debug(
                     f"No faces with confidence >= {self.confidence_threshold} "
                     f"and size >= {self.min_face_size}px"
                 )
-                return []
 
-            # Sort by confidence (highest first)
-            detections.sort(key=lambda x: x['confidence'], reverse=True)
-
-            # Keep only top detection if requested
-            if len(detections) > 1 and self.only_keep_top:
-                self.logger.debug("Multiple faces detected, keeping the most confident one")
-                detections = [detections[0]]
-
-            self.logger.debug(f"Detected {len(detections)} face(s)")
             return detections
 
         except Exception as e:

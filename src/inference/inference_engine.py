@@ -2,24 +2,20 @@ from logging import getLogger, Logger
 import logging
 import torch
 from pathlib import Path
-from typing import Union, List, Optional, Tuple, overload, Dict, Any
+from typing import Union, List, Optional, Tuple, Dict, Any
 import urllib.request
 import cv2
 import numpy as np
-
 from core.model import DeepFakeDetector
 from preprocessing.face_detector import FaceDetector
 from preprocessing.face_extractor import FaceExtractor
 from preprocessing.optimized_frames_extractor import create_frames_extractor
-from config import (
-    PROJECT_ROOT, FACE_DETECTION_MODEL_PATH, HF_MODEL_URL, MODEL_FILENAME,
-    IMAGE_SIZE, MEAN, STD, MIN_FACE_SIZE, FACE_DETECT_CONFIDENCE_THRESHOLD,
-    ONLY_KEEP_TOP_FACE, FACE_EXTRACT_PADDING
-)
 from torchvision import transforms
 from utils.results_dataclasses import InferenceResult, VideoInferenceResult
 from inference.score_aggregator import ScoreAggregator, AggregatedScore
 from inference.batch_prefetcher import BatchPrefetcher
+from utils.config_dataclasses import InferenceConfig
+from config import PROJECT_ROOT, MODEL_FILENAME, FACE_DETECTION_MODEL_PATH, HF_MODEL_URL
 
 
 class InferenceEngine:
@@ -28,46 +24,45 @@ class InferenceEngine:
     CLASS_LABELS: List[str] = ["REAL", "FAKE"]
     """Supported class labels for model predictions"""
  
-    def __init__(self,
-        model_path: Optional[Union[str, Path]] =None,
-        device: Optional[Union[str, torch.device]] =None,
-        auto_download: bool =True
-    ):
+    def __init__(self, config: InferenceConfig, **kwargs):
         """Initialize InferenceEngine.
         Parameters:
-            model_path (str or Path, optional): Path to model weights (.pth file).
-                If None and auto_download=True, downloads from Hugging Face.
-            device (str or torch.device, optional): Device to run inference on.
-                If None, automatically selects CUDA if available, else CPU.
-            auto_download (bool): Whether to automatically download model from HuggingFace
-                if model_path is None or doesn't exist.
+            config (InferenceConfig): configuration for entire inference engine and model
+            kwargs: override config parameters for critical settings, allowing to run without full config
+                TODO
         Raises:
-            ValueError: if parameters are invalid
+            ValueError: if config is not provided and no valid parameter is given for fallback
             RuntimeError: if model loading fails
         """
         super().__init__()
 
         self.logger: Logger = getLogger("/".join(__file__.split("/")[-2:]))
         """Logger instance for InferenceEngine"""
-        
-        self.device: torch.device
+
+        if config is None:
+            raise ValueError("Configuration is required. Please provide an InferenceConfig instance.")
+
+        if not isinstance(config, InferenceConfig):
+            raise TypeError(f"config must be InferenceConfig, got {type(config).__name__}")
+
+        self.config: InferenceConfig = config
+
+        #TODO: handle kwargs overrides for critical settings
+        #Example: model_path, device, auto_download, etc.
+
+        self.device: torch.device = self.config.device.get_device()
         """Device to run inference on (CPU or GPU)"""
-        if device is None:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        else:
-            self.device = torch.device(device)
         self.logger.info(f"Model will be loaded on device: {self.device} (cuda available: {torch.cuda.is_available()})")
 
-        #does not download model if not needed
         self.model_path: Path
         """Path to model weights file"""
-        if model_path is None:
-            self.model_path: Path = PROJECT_ROOT / "models" / "deepfake_detector" / MODEL_FILENAME
+        if self.config.paths.model_path is None:
+            self.model_path = PROJECT_ROOT / "models" / "deepfake_detector" / MODEL_FILENAME
         else:
-            self.model_path: Path = Path(model_path)
+            self.model_path = Path(self.config.paths.model_path)
 
-        if not self.model_path.exists() and auto_download:
-            self.logger.warning(f"Model not found at {model_path}, downloading from Hugging Face...")
+        if not self.model_path.exists() and self.config.inference_options.auto_download_model:
+            self.logger.warning(f"Model not found at {self.model_path}, downloading from Hugging Face...")
             self._download_model()
 
         if not self.model_path.exists():
@@ -76,14 +71,13 @@ class InferenceEngine:
             raise ValueError(error_msg)
 
         self.logger.info("Initializing VeridisQuo deepfake detection model...")
-        use_gpu: bool = str(self.device).startswith('cuda')
-        
-        self.model: DeepFakeDetector = DeepFakeDetector(pretrained=True, use_gpu=use_gpu)
+
+        self.model: DeepFakeDetector = DeepFakeDetector(config=self.config.model_architecture)
         """DeepFakeDetector model instance"""
-        
+
         self._load_weights()
         self.logger.info("Model initialized and weights loaded successfully.")
-        
+
         self.model = self.model.to(self.device)
         self.logger.info(f"Model moved to device: {self.device}")
         self.model.eval()
@@ -92,32 +86,34 @@ class InferenceEngine:
         self.face_detector: Optional[FaceDetector] = None
         """FaceDetector instance for video inference, if available"""
 
-        if FACE_DETECTION_MODEL_PATH.exists():
+        face_detection_model_path = Path(self.config.paths.face_detection_model_path) if self.config.paths.face_detection_model_path else FACE_DETECTION_MODEL_PATH
+
+        if self.config.preprocessing.face_detection.enabled and face_detection_model_path.exists():
             self.logger.info("Initializing FaceDetector...")
-            
+
             self.face_detector = FaceDetector(
-                model_path=str(FACE_DETECTION_MODEL_PATH),
+                model_path=str(face_detection_model_path),
                 device=str(self.device),
-                min_face_size=MIN_FACE_SIZE,
-                confidence_threshold=FACE_DETECT_CONFIDENCE_THRESHOLD,
-                only_keep_top=ONLY_KEEP_TOP_FACE
+                min_face_size=self.config.preprocessing.face_detection.min_face_size,
+                confidence_threshold=self.config.preprocessing.face_detection.confidence_threshold,
+                only_keep_top=self.config.preprocessing.face_detection.only_keep_top
             )
         else:
             self.logger.warning(
-                f"Face detection model not found at {FACE_DETECTION_MODEL_PATH}. "
+                f"Face detection disabled or model not found at {face_detection_model_path}. "
                 "Video inference will process entire frames instead of detected faces."
             )
 
-        self.image_size: Tuple[int, int] = IMAGE_SIZE
+        self.image_size: Tuple[int, int] = self.config.preprocessing.face_extraction.target_size
         """Image size for preprocessing (width, height)"""
 
-        self.mean: List[float] = MEAN
+        self.mean: List[float] = self.config.preprocessing.imagenet_mean
         """ImageNet mean for normalization"""
 
-        self.std: List[float] = STD
+        self.std: List[float] = self.config.preprocessing.imagenet_std
         """ImageNet std for normalization"""
 
-        self.padding: int = FACE_EXTRACT_PADDING
+        self.padding: int = self.config.preprocessing.face_extraction.padding
         """Padding around detected face bounding box"""
 
         self.use_face_detection: bool = self.face_detector is not None
@@ -126,15 +122,14 @@ class InferenceEngine:
 
         self.face_extractor: FaceExtractor = FaceExtractor(
             target_size=self.image_size,
-            normalization=None,  #normalisation handled by torchvision
+            normalization=self.config.preprocessing.face_extraction.normalization,
             padding=self.padding
         )
         """Face extractor for consistent preprocessing"""
-        
-        #torchvision normalization pipeline (optimized, supports CPU/GPU)
+
         self.transform: transforms.Compose = transforms.Compose([
-            transforms.ToTensor(),  # [0, 255] uint8 → [0, 1] float32, [H,W,C] → [C,H,W]
-            transforms.Normalize(mean=self.mean, std=self.std)  #ImageNet normalization
+            transforms.ToTensor(),
+            transforms.Normalize(mean=self.mean, std=self.std)
         ])
         """Torchvision transform pipeline for normalization"""
 
@@ -536,7 +531,7 @@ class InferenceEngine:
             FileNotFoundError: if video file doesn't exist
             RuntimeError: if inference fails
         """
-        video_path = self._validate_video_path(video_path)
+        video_path = self._validate_file_path(video_path)
         self.logger.info(f"Processing video: {video_path.name}")
 
         try:

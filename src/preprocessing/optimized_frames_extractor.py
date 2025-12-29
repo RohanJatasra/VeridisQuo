@@ -375,7 +375,6 @@ class OptimizedFramesExtractor:
 # Backward compatibility alias
 DECORD_AVAILABLE = PYAV_AVAILABLE
 
-
 def create_frames_extractor(
     video_path: str,
     nb_fps: Optional[int] = None,
@@ -383,18 +382,14 @@ def create_frames_extractor(
     use_optimized: bool = True,
     **kwargs
 ):
-    """
-    Factory function to create the appropriate frames extractor.
-
+    """Factory function to create the appropriate frames extractor.
     Falls back to original FramesExtractor if PyAV is not available.
-
-    Args:
+    Parameters:
         video_path: Path to video file
         nb_fps: Frames per second to extract
         device: Device for decoding
         use_optimized: Whether to prefer optimized extractor
         **kwargs: Additional arguments for OptimizedFramesExtractor
-
     Returns:
         FramesExtractor instance
     """

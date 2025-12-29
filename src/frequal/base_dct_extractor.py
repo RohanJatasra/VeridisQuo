@@ -9,11 +9,9 @@ class BaseDCTExtractor(BaseFrequencyExtractor):
     of DCT feature extraction for deepfake detection."""
 
     AVAILABLE_AGGREGATION_METHODS = ["zigzag", "frequency_bands", "statistical"]
-    """Available methods for aggregating DCT block features"""
+    """Available methods for aggregating DCT block features (implementation constant)"""
     DEFAULT_BLOCK_SIZE = 8
-    """Default DCT block size (JPEG standard)"""
-    EPSILON = 1e-10
-    """Small constant for numerical stability in divisions"""
+    """Default DCT block size (JPEG standard, implementation constant)"""
 
     def __init__(self,
         block_size: int,
@@ -21,7 +19,8 @@ class BaseDCTExtractor(BaseFrequencyExtractor):
         aggregation_method: str,
         num_frequency_bands: int,
         feature_dim: int,
-        logger_name: str
+        logger_name: str,
+        epsilon: float = 1e-10
     ):
         """Initialize BaseDCTExtractor.
         Parameters:
@@ -31,6 +30,7 @@ class BaseDCTExtractor(BaseFrequencyExtractor):
             num_frequency_bands (int): number of frequency bands to extract
             feature_dim (int): target output feature dimension
             logger_name (str): name for the logger instance
+            epsilon (float): small constant for numerical stability
         Raises:
             ValueError: if parameters are invalid
         """
@@ -44,6 +44,7 @@ class BaseDCTExtractor(BaseFrequencyExtractor):
             assert block_size in [8, 16], f"Block size must be 8 or 16, got {block_size}"
             assert aggregation_method in self.AVAILABLE_AGGREGATION_METHODS, f"Invalid aggregation method: {aggregation_method}"
             assert num_frequency_bands > 0, "Number of frequency bands must be positive"
+            assert epsilon > 0, "Epsilon must be positive"
 
         except AssertionError as e:
             self.logger.fatal(f"Invalid parameters: {e}")
@@ -55,6 +56,8 @@ class BaseDCTExtractor(BaseFrequencyExtractor):
         """Method for aggregating block features"""
         self.num_frequency_bands: int = num_frequency_bands
         """Number of frequency bands for aggregation"""
+        self.epsilon: float = epsilon
+        """Small constant for numerical stability"""
 
         self._num_raw_features: int = self._calculate_raw_feature_dim()
 

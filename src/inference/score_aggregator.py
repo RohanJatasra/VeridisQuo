@@ -2,7 +2,7 @@ from typing import List, Tuple, Dict, Any, Callable, Union
 from dataclasses import dataclass
 import logging
 
-from inference.results_dataclasses import InferenceResult
+from utils.results_dataclasses import InferenceResult
 
 
 @dataclass

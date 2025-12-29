@@ -25,7 +25,7 @@ class FramesExtractor:
         """Video file path"""
         self.nb_fps: Optional[int] = nb_fps
         """Number of frames to extract per second"""
-        self.logger: logging.Logger = logging.getLogger("preprocessing.FramesExtractor")
+        self.logger: logging.Logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
         """Logger instance for the FramesExtractor class"""
 
         if not self.video_path.exists():
