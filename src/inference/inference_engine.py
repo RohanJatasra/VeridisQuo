@@ -21,8 +21,8 @@ from config import PROJECT_ROOT, MODEL_FILENAME, FACE_DETECTION_MODEL_PATH, HF_M
 class InferenceEngine:
     """Inference engine for VeridisQuo deepfake detection model."""
 
-    CLASS_LABELS: List[str] = ["REAL", "FAKE"]
-    """Supported class labels for model predictions"""
+    CLASS_LABELS: List[str] = ["FAKE", "REAL"]
+    """Supported class labels for model predictions (FAKE=0, REAL=1)"""
  
     def __init__(self, config: InferenceConfig, **kwargs):
         """Initialize InferenceEngine.
@@ -57,7 +57,7 @@ class InferenceEngine:
         self.model_path: Path
         """Path to model weights file"""
         if self.config.paths.model_path is None:
-            self.model_path = PROJECT_ROOT / "models" / "deepfake_detector" / MODEL_FILENAME
+            self.model_path = PROJECT_ROOT / "models" / "deepfake_detection" / MODEL_FILENAME
         else:
             self.model_path = Path(self.config.paths.model_path)
 
@@ -172,10 +172,19 @@ class InferenceEngine:
         """
         try:
             self.logger.info(f"Loading model weights from {self.model_path}...")
-            
-            state_dict = torch.load(self.model_path, map_location=self.device)
+
+            checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
+
+            # Handle both direct state_dict and training checkpoint formats
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                state_dict = checkpoint['model_state_dict']
+                self.logger.debug("Loaded model_state_dict from training checkpoint")
+            else:
+                state_dict = checkpoint
+                self.logger.debug("Loaded direct state_dict")
+
             self.model.load_state_dict(state_dict)
-            
+
             self.logger.info("Model weights loaded successfully")
 
         except Exception as e:
