@@ -38,9 +38,11 @@ if __name__ == "__main__":
 
     logger.info(f"Processing video: {video_path}")
 
-    # Run inference
+    # Run inference with GradCAM
     result = engine.predict_video(
         video_path,
+        enable_gradcam=True,
+        gradcam_output_path=PROJECT_ROOT / "output" / f"{video_path.stem}_gradcam.mp4"
     )
 
     # Display results
@@ -60,5 +62,9 @@ if __name__ == "__main__":
                 print(f"  {key}: {value:.4f}")
             else:
                 print(f"  {key}: {value}")
+
+    # Display GradCAM output
+    if result.gradcam_output_path:
+        print(f"\nGradCAM video saved to: {result.gradcam_output_path}")
 
     print(f"\n{'='*60}\n")
