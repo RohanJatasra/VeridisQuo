@@ -58,6 +58,8 @@ class BaseDCTExtractor(BaseFrequencyExtractor):
         """Number of frequency bands for aggregation"""
         self.epsilon: float = epsilon
         """Small constant for numerical stability"""
+        self.EPSILON: float = epsilon
+        """Small constant for numerical stability (uppercase alias)"""
 
         self._num_raw_features: int = self._calculate_raw_feature_dim()
 
