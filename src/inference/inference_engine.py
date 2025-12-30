@@ -16,6 +16,7 @@ from inference.score_aggregator import ScoreAggregator, AggregatedScore
 from inference.batch_prefetcher import BatchPrefetcher
 from utils.config_dataclasses import InferenceConfig
 from config import PROJECT_ROOT, MODEL_FILENAME, FACE_DETECTION_MODEL_PATH, HF_MODEL_URL
+from gradcam.gradcam import GradCAM, GradCAMVisualizer
 
 
 class InferenceEngine:
@@ -133,7 +134,24 @@ class InferenceEngine:
         ])
         """Torchvision transform pipeline for normalization"""
 
+        self.gradcam: Optional[GradCAM] = None
+        """GradCAM instance (initialized on-demand)"""
+
+        self.gradcam_target_layer = None
+        """Target conv layer for GradCAM visualization"""
+
         self.logger.info("InferenceEngine initialized successfully")
+
+    def _init_gradcam(self) -> None:
+        """Initialize GradCAM on-demand for video visualization.
+
+        Uses the last convolutional layer of EfficientNet as target.
+        This is called lazily when GradCAM is first requested.
+        """
+        if self.gradcam is None:
+            self.gradcam_target_layer = self.model.efficient.features[-1]
+            self.gradcam = GradCAM(self.model, self.gradcam_target_layer)
+            self.logger.info("GradCAM initialized with target layer: efficient.features[-1]")
 
     def _download_model(self) -> None:
         """Download model weights from Hugging Face.
@@ -277,15 +295,16 @@ class InferenceEngine:
             probabilities = self.model.classifier.predict_proba(logits) #[N, 2]
         return logits, probabilities, prediction
 
-    def _predict_frame_batch(self, frames: List[np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _predict_frame_batch(self, frames: List[np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Process a batch of frames with batched operations.
         Parameters:
             frames (List[np.ndarray]): List of frame images in BGR format [H, W, 3]
         Returns:
-            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: (logits, probabilities, prediction)
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: (logits, probabilities, prediction, preprocessed_tensor)
                 - logits: [N, 2] on GPU
                 - probabilities: [N, 2] on GPU
                 - prediction: [N] on GPU (class indices)
+                - preprocessed_tensor: [N, 3, 224, 224] on GPU (for GradCAM)
         Raises:
             ValueError: if frames list is empty
             RuntimeError: if all frames fail preprocessing
@@ -301,7 +320,7 @@ class InferenceEngine:
 
         logits, probabilities, prediction = self._run_inference(batch_tensor)
 
-        return logits, probabilities, prediction
+        return logits, probabilities, prediction, batch_tensor
 
     def _validate_file_path(self, file_path: Union[str, Path]) -> Path:
         """Validate that file (video or image) path exists.
@@ -353,26 +372,49 @@ class InferenceEngine:
             raw_logits=logits_cpu[frame_idx].tolist()
         )
 
-    def _process_video_batches(self, prefetcher: BatchPrefetcher) -> List[InferenceResult]:
+    def _process_video_batches(
+        self,
+        prefetcher: BatchPrefetcher,
+        enable_gradcam: bool = False
+    ) -> Tuple[List[InferenceResult], List[np.ndarray], List[Dict], List[Dict]]:
         """Process all batches from prefetcher and return frame results.
         Parameters:
             prefetcher (BatchPrefetcher): Initialized prefetcher with batches ready
+            enable_gradcam (bool): Whether to generate GradCAM heatmaps
         Returns:
-            List[InferenceResult]: Results for all processed frames
+            Tuple[List[InferenceResult], List[np.ndarray], List[Dict], List[Dict]]:
+                - frame_results: inference results per frame
+                - gradcam_heatmaps: raw heatmaps [224, 224] in [0, 1]
+                - face_infos: bbox and shape info for each heatmap
+                - frame_metadata: frame numbers and timestamps
         Raises:
             RuntimeError: if no frames were successfully processed
         """
         frame_results: List[InferenceResult] = []
+        gradcam_heatmaps: List[np.ndarray] = []
+        face_infos: List[Dict] = []
+        all_frame_metadata: List[Dict] = []
 
         try:
             for batch_frames, batch_metadata in prefetcher:
                 try:
-                    logits, probabilities, predictions = self._predict_frame_batch(batch_frames)
+                    logits, probabilities, predictions, preprocessed = self._predict_frame_batch(batch_frames)
 
                     #single CPU transfer per batch
                     probs_cpu = probabilities.cpu().numpy()  # [N, 2]
                     logits_cpu = logits.cpu().numpy()  # [N, 2]
                     predictions_cpu = predictions.cpu().numpy()  # [N]
+
+                    # Generate GradCAM heatmaps if enabled
+                    if enable_gradcam:
+                        heatmaps, face_info_batch = self._generate_gradcam_heatmaps_batch(
+                            batch_frames=batch_frames,
+                            preprocessed_tensor=preprocessed,
+                            target_class=0  # FAKE class
+                        )
+                        gradcam_heatmaps.extend(heatmaps)
+                        face_infos.extend(face_info_batch)
+                        all_frame_metadata.extend(batch_metadata)
 
                     #build results for each frame in batch
                     for i in range(len(batch_frames)):
@@ -389,6 +431,13 @@ class InferenceEngine:
 
                 except Exception as e:
                     self.logger.warning(f"Failed to process batch of {len(batch_frames)} frames: {e}")
+                    # Skip GradCAM for failed batches
+                    if enable_gradcam:
+                        # Add empty heatmaps to keep sync
+                        for _ in range(len(batch_frames)):
+                            gradcam_heatmaps.append(None)
+                            face_infos.append(None)
+                        all_frame_metadata.extend(batch_metadata)
 
         finally:
             prefetcher.stop()
@@ -396,7 +445,7 @@ class InferenceEngine:
         if not frame_results:
             raise RuntimeError("No frames were successfully processed")
 
-        return frame_results
+        return frame_results, gradcam_heatmaps, face_infos, all_frame_metadata
 
     def _aggregate_video_results(self,
         frame_results: List[InferenceResult],
@@ -437,6 +486,266 @@ class InferenceEngine:
         )
 
         return video_result
+
+    def _generate_gradcam_heatmaps_batch(
+        self,
+        batch_frames: List[np.ndarray],
+        preprocessed_tensor: torch.Tensor,
+        target_class: int = 0
+    ) -> Tuple[List[np.ndarray], List[Dict]]:
+        """Generate raw GradCAM heatmaps for a batch of frames.
+
+        Parameters:
+            batch_frames: Original frames in BGR format [H, W, 3]
+            preprocessed_tensor: Preprocessed tensor [N, 3, 224, 224] (normalized, RGB)
+            target_class: Class to visualize (0=FAKE, 1=REAL)
+
+        Returns:
+            Tuple[List[np.ndarray], List[Dict]]:
+                - heatmaps: [N] list of [224, 224] float32 arrays in [0, 1]
+                - face_infos: [N] list of dicts with 'bbox' and 'frame_shape'
+        """
+        try:
+            # Generate CAM heatmaps for entire batch
+            cams = self.gradcam(
+                preprocessed_tensor,
+                target_class=target_class,
+                upsample_to=(224, 224)
+            )  # [N, 224, 224] normalized to [0, 1]
+
+            heatmaps = []
+            face_infos = []
+
+            for i, (frame, cam) in enumerate(zip(batch_frames, cams)):
+                cam_np = cam.cpu().numpy()  # [224, 224] float32 [0, 1]
+
+                # Get face bounding box
+                if self.use_face_detection:
+                    detections = self.face_detector.detect_faces_batch([frame])[0]
+                    if detections:
+                        detection = detections[0]
+                        x, y, width, height = detection['bbox']
+                        bbox = (x, y, x + width, y + height)  # (x1, y1, x2, y2)
+                    else:
+                        bbox = None
+                        self.logger.warning(f"No face detected in frame {i}")
+                else:
+                    bbox = None
+
+                face_info = {
+                    'bbox': bbox,
+                    'frame_shape': frame.shape[:2]  # (H, W)
+                }
+
+                heatmaps.append(cam_np)
+                face_infos.append(face_info)
+
+            return heatmaps, face_infos
+
+        except Exception as e:
+            self.logger.error(f"GradCAM heatmap generation failed: {e}")
+            # Return empty lists on error
+            return [], []
+
+    def _apply_heatmap_to_frame(
+        self,
+        frame: np.ndarray,
+        heatmap: np.ndarray,
+        face_info: Dict,
+        alpha: float
+    ) -> np.ndarray:
+        """Apply GradCAM heatmap overlay to a single frame.
+
+        Parameters:
+            frame: Original frame [H, W, 3] BGR
+            heatmap: Raw heatmap [224, 224] float32 in [0, 1]
+            face_info: Dict with 'bbox' (x1, y1, x2, y2) and 'frame_shape'
+            alpha: Overlay transparency
+
+        Returns:
+            Frame with heatmap overlay [H, W, 3] BGR
+        """
+        frame_with_overlay = frame.copy()
+        bbox = face_info.get('bbox') if face_info else None
+
+        if bbox is None:
+            # No face detected - return original frame
+            return frame
+
+        x1, y1, x2, y2 = bbox
+
+        # Extract face region
+        face_region = frame[y1:y2, x1:x2]
+        face_h, face_w = face_region.shape[:2]
+
+        if face_h == 0 or face_w == 0:
+            return frame
+
+        # Resize heatmap to face size
+        heatmap_resized = cv2.resize(heatmap, (face_w, face_h))
+
+        # Convert to RGB for colormap application
+        face_rgb = cv2.cvtColor(face_region, cv2.COLOR_BGR2RGB)
+
+        # Apply colormap to heatmap
+        heatmap_uint8 = (heatmap_resized * 255).astype(np.uint8)
+        heatmap_colored = GradCAMVisualizer.apply_colormap(heatmap_uint8)
+
+        # Overlay heatmap on face
+        overlay_rgb = cv2.addWeighted(
+            face_rgb, 1 - alpha,
+            heatmap_colored, alpha,
+            0
+        )
+
+        # Convert back to BGR
+        overlay_bgr = cv2.cvtColor(overlay_rgb, cv2.COLOR_RGB2BGR)
+
+        # Place overlay back on frame
+        frame_with_overlay[y1:y2, x1:x2] = overlay_bgr
+
+        return frame_with_overlay
+
+    def _save_gradcam_video(
+        self,
+        gradcam_heatmaps: List[np.ndarray],
+        face_infos: List[Dict],
+        frame_metadata: List[Dict],
+        output_path: Path,
+        original_video_path: Path,
+        fps: float,
+        alpha: float = 0.4
+    ) -> None:
+        """Save original video with interpolated GradCAM overlays.
+
+        Reads all frames from original video and applies interpolated GradCAM heatmaps.
+        Only the heatmaps are interpolated, not the video frames themselves.
+
+        Parameters:
+            gradcam_heatmaps: List of raw heatmaps [224, 224] float32 in [0, 1]
+            face_infos: List of dicts with 'bbox' and 'frame_shape' for each heatmap
+            frame_metadata: Metadata for each sampled frame (includes frame_number)
+            output_path: Path to save video
+            original_video_path: Path to original video to read all frames from
+            fps: Original video FPS
+            alpha: Overlay transparency (0-1)
+
+        Raises:
+            RuntimeError: if video writing fails
+        """
+        try:
+            if not gradcam_heatmaps or not original_video_path:
+                self.logger.warning("No heatmaps or original video path provided")
+                return
+
+            # Open original video
+            cap = cv2.VideoCapture(str(original_video_path))
+            if not cap.isOpened():
+                raise RuntimeError(f"Failed to open original video: {original_video_path}")
+
+            # Get total frame count
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+
+            # Initialize VideoWriter
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(
+                str(output_path),
+                fourcc,
+                fps,
+                (width, height)
+            )
+
+            if not out.isOpened():
+                cap.release()
+                raise RuntimeError(f"Failed to open VideoWriter for {output_path}")
+
+            # Get frame numbers from metadata
+            frame_numbers = [meta['frame_number'] for meta in frame_metadata]
+
+            self.logger.info(
+                f"Applying GradCAM overlays: {len(gradcam_heatmaps)} heatmaps for {total_frames} total frames"
+            )
+
+            # Process each frame from original video
+            frame_idx = 0
+            while True:
+                ret, original_frame = cap.read()
+                if not ret:
+                    break
+
+                # Get or interpolate heatmap for this frame
+                if frame_idx in frame_numbers:
+                    # Exact match - use computed heatmap
+                    heatmap_idx = frame_numbers.index(frame_idx)
+                    heatmap = gradcam_heatmaps[heatmap_idx]
+                    face_info = face_infos[heatmap_idx]
+                else:
+                    # Interpolate heatmap
+                    prev_idx = None
+                    next_idx = None
+
+                    for idx, fnum in enumerate(frame_numbers):
+                        if fnum < frame_idx:
+                            prev_idx = idx
+                        elif fnum > frame_idx and next_idx is None:
+                            next_idx = idx
+                            break
+
+                    if prev_idx is not None and next_idx is not None:
+                        # Linear interpolation of heatmaps
+                        prev_frame_num = frame_numbers[prev_idx]
+                        next_frame_num = frame_numbers[next_idx]
+                        weight = (frame_idx - prev_frame_num) / (next_frame_num - prev_frame_num)
+
+                        # Interpolate heatmaps
+                        if gradcam_heatmaps[prev_idx] is not None and gradcam_heatmaps[next_idx] is not None:
+                            heatmap = cv2.addWeighted(
+                                gradcam_heatmaps[prev_idx], 1 - weight,
+                                gradcam_heatmaps[next_idx], weight,
+                                0
+                            )
+                            # Use face info from nearest frame
+                            face_info = face_infos[prev_idx if weight < 0.5 else next_idx]
+                        else:
+                            # One of the heatmaps is None, use the valid one
+                            heatmap = gradcam_heatmaps[prev_idx] or gradcam_heatmaps[next_idx]
+                            face_info = face_infos[prev_idx] or face_infos[next_idx]
+                    elif prev_idx is not None:
+                        heatmap = gradcam_heatmaps[prev_idx]
+                        face_info = face_infos[prev_idx]
+                    elif next_idx is not None:
+                        heatmap = gradcam_heatmaps[next_idx]
+                        face_info = face_infos[next_idx]
+                    else:
+                        # No heatmaps available - write original frame
+                        out.write(original_frame)
+                        frame_idx += 1
+                        continue
+
+                # Apply heatmap to original frame
+                if heatmap is not None and face_info is not None:
+                    frame_with_overlay = self._apply_heatmap_to_frame(
+                        original_frame,
+                        heatmap,
+                        face_info,
+                        alpha
+                    )
+                else:
+                    frame_with_overlay = original_frame
+
+                out.write(frame_with_overlay)
+                frame_idx += 1
+
+            cap.release()
+            out.release()
+            self.logger.info(f"GradCAM video saved: {total_frames} frames written to {output_path}")
+
+        except Exception as e:
+            error_msg = f"Failed to save GradCAM video: {e}"
+            self.logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
 
     def predict_image(self, image: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Run inference on a single image.
@@ -523,7 +832,10 @@ class InferenceEngine:
         frames_per_second: Optional[int] =1,
         aggregation_method: str ="majority",
         use_pyav_extractor: bool =True,
-        batch_size: int =8
+        batch_size: int =8,
+        enable_gradcam: bool = False,
+        gradcam_output_path: Optional[Union[str, Path]] = None,
+        gradcam_alpha: float = 0.4
     ) -> VideoInferenceResult:
         """Run inference on a video file.
         Parameters:
@@ -534,14 +846,27 @@ class InferenceEngine:
                 Options: "majority", "average", "weighted_average", "max_confidence", "threshold"
             use_pyav_extractor (bool): Whether to use OptimizedFramesExtractor (PyAV)
             batch_size (int): Number of frames to process in a single batch (default: 8)
+            enable_gradcam (bool): If True, generate GradCAM visualization video
+            gradcam_output_path (str or Path, optional): Path to save GradCAM video (required if enable_gradcam=True)
+            gradcam_alpha (float): Transparency for heatmap overlay (0=transparent, 1=opaque), default 0.4
         Returns:
             VideoInferenceResult: Aggregated video prediction result
         Raises:
             FileNotFoundError: if video file doesn't exist
+            ValueError: if enable_gradcam=True but gradcam_output_path is None
             RuntimeError: if inference fails
         """
         video_path = self._validate_file_path(video_path)
         self.logger.info(f"Processing video: {video_path.name}")
+
+        # Validate GradCAM parameters
+        if enable_gradcam and gradcam_output_path is None:
+            raise ValueError("gradcam_output_path must be specified when enable_gradcam=True")
+
+        if enable_gradcam:
+            gradcam_output_path = Path(gradcam_output_path)
+            gradcam_output_path.parent.mkdir(parents=True, exist_ok=True)
+            self._init_gradcam()  # Lazy initialization
 
         try:
             #create frames extractor
@@ -562,10 +887,32 @@ class InferenceEngine:
             )
             prefetcher.start()
 
-            frame_results = self._process_video_batches(prefetcher)
+            # Process video with optional GradCAM
+            frame_results, gradcam_heatmaps, face_infos, frame_metadata = self._process_video_batches(
+                prefetcher,
+                enable_gradcam=enable_gradcam
+            )
 
-            #aggregate and build final result
-            return self._aggregate_video_results(frame_results, video_path, aggregation_method)
+            # Save GradCAM video if enabled
+            if enable_gradcam and gradcam_heatmaps:
+                self._save_gradcam_video(
+                    gradcam_heatmaps=gradcam_heatmaps,
+                    face_infos=face_infos,
+                    frame_metadata=frame_metadata,
+                    output_path=gradcam_output_path,
+                    original_video_path=video_path,
+                    fps=frames_extractor.video_fps,
+                    alpha=gradcam_alpha
+                )
+
+            # Aggregate and build final result
+            video_result = self._aggregate_video_results(frame_results, video_path, aggregation_method)
+
+            # Add GradCAM path to result if generated
+            if enable_gradcam:
+                video_result.gradcam_output_path = str(gradcam_output_path)
+
+            return video_result
 
         except Exception as e:
             error_msg = f"Video inference failed for {video_path}: {e}"
