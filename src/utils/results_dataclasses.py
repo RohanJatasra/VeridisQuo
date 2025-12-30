@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 @dataclass
 class InferenceResult:
@@ -27,6 +27,7 @@ class VideoInferenceResult:
         aggregate_confidence (float): Overall confidence score
         num_frames_analyzed (int): Number of frames analyzed
         aggregation_metadata (Dict[str, Any], optional): Additional metadata from aggregation
+        gradcam_output_path (Optional[str]): Path to GradCAM visualization video (if generated)
     """
     video_path: str
     frame_results: List[InferenceResult]
@@ -34,6 +35,7 @@ class VideoInferenceResult:
     aggregate_confidence: float
     num_frames_analyzed: int
     aggregation_metadata: Dict = None
+    gradcam_output_path: Optional[str] = None
 
     def __post_init__(self):
         """Initialize optional fields."""
