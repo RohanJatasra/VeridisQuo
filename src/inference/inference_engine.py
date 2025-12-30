@@ -591,15 +591,33 @@ class InferenceEngine:
         heatmap_uint8 = (heatmap_resized * 255).astype(np.uint8)
         heatmap_colored = GradCAMVisualizer.apply_colormap(heatmap_uint8)
 
-        # Overlay heatmap on face
+        # Create elliptical mask to match face shape
+        mask = np.zeros((face_h, face_w), dtype=np.uint8)
+        center = (face_w // 2, face_h // 2)
+        # Use 90% of bbox dimensions for ellipse axes to stay within face
+        axes = (int(face_w * 0.45), int(face_h * 0.45))
+        cv2.ellipse(mask, center, axes, 0, 0, 360, 255, -1)
+
+        # Apply feathering (Gaussian blur) to soften edges
+        mask = cv2.GaussianBlur(mask, (21, 21), 11)
+        mask_normalized = mask.astype(np.float32) / 255.0
+        mask_3ch = np.stack([mask_normalized] * 3, axis=-1)
+
+        # Overlay heatmap on face with mask
         overlay_rgb = cv2.addWeighted(
             face_rgb, 1 - alpha,
             heatmap_colored, alpha,
             0
         )
 
+        # Blend overlay with original face using elliptical mask
+        face_rgb_blended = (
+            face_rgb * (1 - mask_3ch) +
+            overlay_rgb * mask_3ch
+        ).astype(np.uint8)
+
         # Convert back to BGR
-        overlay_bgr = cv2.cvtColor(overlay_rgb, cv2.COLOR_RGB2BGR)
+        overlay_bgr = cv2.cvtColor(face_rgb_blended, cv2.COLOR_RGB2BGR)
 
         # Place overlay back on frame
         frame_with_overlay[y1:y2, x1:x2] = overlay_bgr
@@ -706,8 +724,23 @@ class InferenceEngine:
                                 gradcam_heatmaps[next_idx], weight,
                                 0
                             )
-                            # Use face info from nearest frame
-                            face_info = face_infos[prev_idx if weight < 0.5 else next_idx]
+                            # Interpolate bboxes to prevent teleportation
+                            prev_bbox = face_infos[prev_idx].get('bbox')
+                            next_bbox = face_infos[next_idx].get('bbox')
+
+                            if prev_bbox is not None and next_bbox is not None:
+                                # Linear interpolation of bbox coordinates
+                                interpolated_bbox = tuple(
+                                    int(prev_bbox[i] * (1 - weight) + next_bbox[i] * weight)
+                                    for i in range(4)
+                                )
+                                face_info = {
+                                    'bbox': interpolated_bbox,
+                                    'frame_shape': face_infos[prev_idx]['frame_shape']
+                                }
+                            else:
+                                # One bbox is None, use the valid one
+                                face_info = face_infos[prev_idx] if prev_bbox else face_infos[next_idx]
                         else:
                             # One of the heatmaps is None, use the valid one
                             heatmap = gradcam_heatmaps[prev_idx] or gradcam_heatmaps[next_idx]
