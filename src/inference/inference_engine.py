@@ -666,8 +666,9 @@ class InferenceEngine:
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 
-            # Initialize VideoWriter
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            # Initialize VideoWriter with H.264 codec (better compression)
+            # Try H.264/AVC first for better compression
+            fourcc = cv2.VideoWriter_fourcc(*'avc1')
             out = cv2.VideoWriter(
                 str(output_path),
                 fourcc,
@@ -676,8 +677,19 @@ class InferenceEngine:
             )
 
             if not out.isOpened():
-                cap.release()
-                raise RuntimeError(f"Failed to open VideoWriter for {output_path}")
+                # Fallback to mp4v if H.264 is not available
+                self.logger.warning("H.264 codec (avc1) not available, falling back to mp4v")
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                out = cv2.VideoWriter(
+                    str(output_path),
+                    fourcc,
+                    fps,
+                    (width, height)
+                )
+
+                if not out.isOpened():
+                    cap.release()
+                    raise RuntimeError(f"Failed to open VideoWriter for {output_path} with both avc1 and mp4v codecs")
 
             # Get frame numbers from metadata
             frame_numbers = [meta['frame_number'] for meta in frame_metadata]
