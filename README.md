@@ -7,86 +7,70 @@ TODO...
 
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#1a1a2e', 'primaryTextColor': '#fff', 'primaryBorderColor': '#7C0000', 'lineColor': '#ffffff', 'secondaryColor': '#006100', 'tertiaryColor': '#fff', 'background': '#0d1117', 'mainBkg': '#0d1117', 'secondBkg': '#0d1117'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#1a1a2e', 'primaryTextColor': '#fff', 'lineColor': '#ffffff', 'background': '#0d1117', 'mainBkg': '#0d1117'}}}%%
 
-flowchart LR
+flowchart TB
     subgraph Preprocess[" Preprocess "]
-        A[MP4 Video]
-        B[Frames extraction]
-        C[Faces detection]
-        D[Faces extraction]
-        A --> B
-        B -->|"batch, 3, 224, 224"| C
-        C -->|"batch, 3, 224, 224"| D
+        A[MP4 Video] --> B[Frames extraction]
+        B --> C[Faces detection]
+        C --> D[Faces extraction]
     end
 
-    subgraph Gradcam_Module[" Gradcam Module "]
-        O[GradcamComputation]
-        P[GradcamVisualization]
-        Q((Remap))
-        R[Final ManipulatedVideo]
-        O --> P
-        P --> Q
-        Q --> R
-    end
-
-    subgraph Spatial_Module[" Spatial Module "]
-        E[Features ExtractionEfficientNet]
-        F((Pooled))
-        E -->|"batch, 1792, 7, 7"| F
-    end
-
-    subgraph Frequency_Module[" Frequency Module "]
-        G[DCT Extractorblocks=8×8, freq_bands]
-        H[FFT Extractorradial bands=8, hann window]
-        I((Concat))
-        J[FusionMLP1024→1024→512→1024]
-        G -->|"batch, 512"| I
-        H -->|"batch, 512"| I
-        I -->|"batch, 1024"| J
-    end
-
-    subgraph Classifier_Module[" Classifier Module "]
-        K((Concat))
-        L[MLP]
-        M[Frames Aggregation]
-        N[Final Score]
-        K -->|"batch, 2816"| L
-        L -->|"batch, 2"| M
-        M --> N
-    end
-
-    D -->|"batch, 3, 224, 224"| E
+    D --> E
     D --> G
     D --> H
-    
-    F -->|"batch, 1792"| K
-    J -->|"batch, 1024"| K
-    
+
+    subgraph Processing[" "]
+        direction LR
+        subgraph Spatial_Module[" Spatial Module "]
+            E[Features ExtractionEfficientNet] -->|"1792, 7, 7"| F((Pooled))
+        end
+
+        subgraph Frequency_Module[" Frequency Module "]
+            G[DCT Extractor8×8, freq_bands] -->|"512"| I((Concat))
+            H[FFT Extractorradial=8, hann] -->|"512"| I
+            I -->|"1024"| J[FusionMLP1024→512→1024]
+        end
+    end
+
+    F -->|"1792"| K
+    J -->|"1024"| K
+
+    subgraph Classifier_Module[" Classifier Module "]
+        K((Concat)) -->|"2816"| L[MLP]
+        L --> M[Frames Aggregation]
+        M --> N[Final Score]
+    end
+
     E --> O
     D --> Q
 
+    subgraph Gradcam_Module[" Gradcam Module "]
+        O[Gradcam Computation] --> P[Gradcam Visualization]
+        P --> Q((Remap))
+        Q --> R[Final Manipulated Video]
+    end
+
     %% Styling
-    classDef input fill:#1a1a2e,stroke:#6b7280,color:#fff
     classDef preprocess fill:#1a1a2e,stroke:#f59e0b,color:#f59e0b
     classDef spatial fill:#1a1a2e,stroke:#10b981,color:#10b981
     classDef frequency fill:#1a1a2e,stroke:#3b82f6,color:#3b82f6
     classDef classifier fill:#1a1a2e,stroke:#ec4899,color:#ec4899
     classDef gradcam fill:#1a1a2e,stroke:#a855f7,color:#a855f7
-    classDef output fill:#1a1a2e,stroke:#6b7280,color:#fff
+    classDef default fill:#1a1a2e,stroke:#6b7280,color:#fff
 
-    class A,R input
     class B,C,D preprocess
     class E,F spatial
     class G,H,I,J frequency
     class K,L,M,N classifier
-    class O,P,Q gradcam
+    class O,P,Q,R gradcam
 
     style Preprocess fill:#0d1117,stroke:#f59e0b,color:#f59e0b
     style Spatial_Module fill:#0d1117,stroke:#10b981,color:#10b981
     style Frequency_Module fill:#0d1117,stroke:#3b82f6,color:#3b82f6
     style Classifier_Module fill:#0d1117,stroke:#ec4899,color:#ec4899
     style Gradcam_Module fill:#0d1117,stroke:#a855f7,color:#a855f7
+    style Processing fill:transparent,stroke:none
 ```
 
 ## Param
