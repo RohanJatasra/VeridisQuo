@@ -5,7 +5,6 @@ from spatial.efficient_net import EfficientNetFeatureExtractor
 from frequal.frequency_feature_extractor import FrequencyFeatureExtractor
 from classification.face_features_concatenator import FaceFeaturesConcatenator
 from classification.face_classifier import FaceClassifier
-from inference import ScoreAggregator, AggregatedScore
 from logging import Logger, getLogger
 from utils.config_dataclasses import ModelArchitectureConfig
 
@@ -84,9 +83,6 @@ class DeepFakeDetector(nn.Module):
             path_to_weights=config.classifier.path_to_weights
         )
         """Face classifier taking concatenated features and outputting logits"""
-
-        self.aggregator: ScoreAggregator = ScoreAggregator()
-        """ScoreAggregator for aggregating frame-level predictions"""
 
     def forward(self, x_image: torch.Tensor) -> torch.Tensor:
         """Forward pass through the deepfake detection model.

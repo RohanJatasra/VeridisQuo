@@ -270,7 +270,7 @@ class DeviceConfig:
         Returns:
             torch.device: configured device or auto-selected device
         """
-        if self.type is None:
+        if self.type is None or self.type == "auto":
             return torch.device("cuda" if torch.cuda.is_available() else "cpu")
         return torch.device(self.type)
 

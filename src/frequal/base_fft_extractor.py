@@ -76,22 +76,48 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
 
         self.num_azimuthal_sectors: int = num_azimuthal_sectors
         """Number of angular sectors for directional analysis"""
+        self.NUM_AZIMUTHAL_SECTORS: int = num_azimuthal_sectors
+        """Number of angular sectors for directional analysis (uppercase alias)"""
+
         self.high_freq_threshold_ratio: float = high_freq_threshold_ratio
         """Ratio defining high-frequency region"""
+        self.HIGH_FREQ_THRESHOLD_RATIO: float = high_freq_threshold_ratio
+        """Ratio defining high-frequency region (uppercase alias)"""
+
         self.artifact_edge_width: int = artifact_edge_width
         """Width of edge regions for artifact detection"""
+        self.ARTIFACT_EDGE_WIDTH: int = artifact_edge_width
+        """Width of edge regions for artifact detection (uppercase alias)"""
+
         self.artifact_num_radial_samples: int = artifact_num_radial_samples
         """Number of radial samples for upsampling detection"""
+        self.ARTIFACT_NUM_RADIAL_SAMPLES: int = artifact_num_radial_samples
+        """Number of radial samples for upsampling detection (uppercase alias)"""
+
         self.artifact_center_region_size: int = artifact_center_region_size
         """Half-size of center region for variance analysis"""
+        self.ARTIFACT_CENTER_REGION_SIZE: int = artifact_center_region_size
+        """Half-size of center region for variance analysis (uppercase alias)"""
+
         self.default_smoothing_kernel_size: int = default_smoothing_kernel_size
         """Default kernel size for spectrum smoothing"""
+        self.DEFAULT_SMOOTHING_KERNEL_SIZE: int = default_smoothing_kernel_size
+        """Default kernel size for spectrum smoothing (uppercase alias)"""
+
         self.energy_band_start_multiplier: int = energy_band_start_multiplier
         """Multiplier for energy band start index"""
+        self.ENERGY_BAND_START_MULTIPLIER: int = energy_band_start_multiplier
+        """Multiplier for energy band start index (uppercase alias)"""
+
         self.energy_band_end_multiplier: int = energy_band_end_multiplier
         """Multiplier for energy band end index"""
+        self.ENERGY_BAND_END_MULTIPLIER: int = energy_band_end_multiplier
+        """Multiplier for energy band end index (uppercase alias)"""
+
         self.epsilon: float = epsilon
         """Small constant for numerical stability"""
+        self.EPSILON: float = epsilon
+        """Small constant for numerical stability (uppercase alias)"""
 
         self._num_raw_features: int = self._calculate_raw_feature_dim()
 

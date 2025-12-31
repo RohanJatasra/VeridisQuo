@@ -6,7 +6,7 @@ for performing deepfake detection inference on images and videos.
 """
 
 from .inference_engine import InferenceEngine
-from .results_dataclasses import InferenceResult, VideoInferenceResult
+from utils.inference_results_dataclasses import InferenceResult, VideoInferenceResult
 from .score_aggregator import ScoreAggregator, AggregatedScore
 
 __version__ = "0.1.0"
