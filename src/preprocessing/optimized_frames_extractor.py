@@ -31,8 +31,7 @@ class OptimizedFramesExtractor:
     - Memory-efficient streaming for large videos
     """
 
-    def __init__(
-        self,
+    def __init__(self,
         video_path: str,
         nb_fps: Optional[int] = None,
         device: str = "cpu",

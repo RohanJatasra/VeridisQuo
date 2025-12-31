@@ -11,7 +11,7 @@ from preprocessing.face_detector import FaceDetector
 from preprocessing.face_extractor import FaceExtractor
 from preprocessing.optimized_frames_extractor import create_frames_extractor
 from torchvision import transforms
-from utils.results_dataclasses import InferenceResult, VideoInferenceResult
+from utils.inference_results_dataclasses import InferenceResult, VideoInferenceResult
 from inference.score_aggregator import ScoreAggregator, AggregatedScore
 from inference.batch_prefetcher import BatchPrefetcher
 from utils.config_dataclasses import InferenceConfig

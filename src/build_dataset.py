@@ -2,7 +2,7 @@ import logging
 from dataset_builder.dataset_builder import DatasetBuilder
 from training.trainer import Trainer
 from dotenv import load_dotenv, find_dotenv
-from utils.device import get_device
+from utils.utils import get_device
 
 load_dotenv(find_dotenv())
 

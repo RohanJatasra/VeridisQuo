@@ -1,0 +1,469 @@
+# VeridisQuo Training Configuration - Complete parameter registry for training pipeline
+
+type: training
+
+name: training_config
+
+paths:
+  # Data directories for training pipeline
+  project_root: ./
+
+  # Training dataset paths
+  data_folder: data/FaceForensics++_C23
+  csv_folder: data/FaceForensics++_C23/csv
+  frame_dir: data/FaceForensics++_C23/frames
+  faces_dir: data/FaceForensics++_C23/faces
+
+  # Test dataset paths
+  test_data_folder: data/FaceForensics++_C23_test
+  test_csv_folder: data/FaceForensics++_C23_test/csv
+  test_frame_dir: data/FaceForensics++_C23_test/frames
+  test_faces_dir: data/FaceForensics++_C23_test/faces
+
+  # Preprocessed dataset paths
+  preprocessed_dataset_dir: data/preprocessed_dataset
+  train_csv: data/preprocessed_dataset/train.csv
+  test_csv: data/preprocessed_dataset/test.csv
+  eval_csv: data/preprocessed_dataset/eval.csv
+
+  # Model and output paths
+  output:
+    # Directory to save training outputs
+    results_dir: output/training
+    model_dir: models
+    logs_dir: logs/training
+
+  # Model weights paths
+  models:
+    face_detection:
+      custom_weights_path: models/face_detection/face_detection.pt
+    efficientnet:
+      # EfficientNet weights - null uses ImageNet pretrained
+      custom_weights_path: null
+    frequency_extractor:
+      # Custom weights for frequency feature extractor MLP fusion
+      custom_weights_path: null
+    classifier:
+      # Custom weights for final classifier MLP
+      custom_weights_path: null
+
+device:
+  # Device configuration for training
+  # Options: auto, cpu, cuda, cuda:0, cuda:1
+  # Description: auto selects CUDA if available, otherwise CPU
+  type: auto
+
+  # Performance settings
+  float32_matmul_precision: high  # Options: highest, high, medium
+  cudnn_benchmark: true
+
+training:
+  # Core training hyperparameters
+
+  # Training mode
+  use_test_dataset: false  # Whether to use test dataset instead of train
+
+  # Batch and epoch configuration
+  batch_size: 64  # Optimized for 16GB GPU (use 16 for 8GB GPU)
+  num_epochs: 25
+  warmup_epochs: 3  # Linear warmup before cosine annealing
+
+  # Learning rate configuration
+  learning_rate: 1e-4  # Maximum learning rate
+  min_learning_rate: 1e-6  # Minimum learning rate for scheduler
+
+  # Regularization
+  weight_decay: 1e-4  # L2 regularization (AdamW)
+  gradient_clip_max_norm: 1.0  # Gradient clipping threshold
+
+  # Optimization settings
+  use_mixed_precision: false  # Use automatic mixed precision (AMP)
+  compile_model: false  # Use torch.compile() for optimization
+
+  # Reproducibility
+  seed: 42  # Random seed for reproducibility
+
+optimizer:
+  # Optimizer configuration
+  # Implemented optimizers: AdamW
+  type: AdamW
+
+  # AdamW parameters (PyTorch defaults)
+  betas: [0.9, 0.999]
+  eps: 1e-8
+  # Use AMSGrad variant of AdamW
+  amsgrad: false
+
+scheduler:
+  # Learning rate scheduler configuration
+  type: cosine_with_warmup
+
+  # Warmup configuration
+  warmup_epochs: 3  # Linear increase from 0 to max LR
+
+loss:
+  # Loss function configuration
+  type: CrossEntropyLoss
+  reduction: mean
+  label_smoothing: 0.0
+
+  # Class configuration
+  num_classes: 2  # Implemented: 0=FAKE, 1=REAL
+
+model_architecture:
+  # DeepFakeDetector model architecture parameters
+
+  # Input channel mode for images
+  # Implemented channel mode options: luminance, grayscale, YCbCr, RGB
+  channel_mode: luminance
+
+  spatial_features:
+    # EfficientNet-B4 for spatial feature extraction
+    # Description: Pretrained on ImageNet, extracts spatial features from faces
+    name: EfficientNet-B4
+    output_dim: 1792
+
+  frequency_features:
+    # FFT and DCT combined frequency analysis
+    # Description: Use PyTorch (GPU) vs NumPy (CPU) extractors
+    use_gpu_extractors: true
+
+    fft:
+      # Fast Fourier Transform parameters
+      # Description: FFT extracts frequency patterns using concentric radial bands
+      feature_dim: 512
+      num_radial_bands: 8
+      window_function: hann  # Options: hann, hamming, blackman, none, null
+      high_freq_emphasis: true
+
+      # FFT algorithmic constants
+      constants:
+        epsilon: 1e-10
+        num_azimuthal_sectors: 8  # Number of 45-degree angular sectors
+        high_freq_threshold_ratio: 0.5  # Outer 50% of spectrum threshold
+        artifact_edge_width: 5
+        artifact_num_radial_samples: 50
+        artifact_center_region_size: 20
+        default_smoothing_kernel_size: 5
+        energy_band_start_multiplier: 2
+        energy_band_end_multiplier: 3
+
+    dct:
+      # Discrete Cosine Transform parameters
+      # Description: DCT divides image into blocks and extracts frequency coefficients
+      feature_dim: 512
+      block_size: 8  # Options: 8 or 16 (JPEG standard is 8)
+      aggregation_method: frequency_bands  # Options: zigzag, frequency_bands, statistical
+      num_frequency_bands: 4
+
+      # DCT algorithmic constants
+      constants:
+        epsilon: 1e-10
+        default_block_size: 8
+
+    fusion:
+      # MLP fusion of FFT and DCT features
+      # Description: Combines FFT (512) + DCT (512) → 1024 features via MLP
+      output_dim: 1024
+      hidden_dims: null  # null = [combined_dim, combined_dim//2] = [1024, 512]
+      dropout_rate: 0.3
+      use_batch_norm: true  # Uses LayerNorm for batch_size=1 support
+      weights_path: null
+
+  concatenation:
+    # Concatenation of spatial and frequency features
+    # Description: EfficientNet (1792) + Frequency (1024) = 2816
+    spatial_dim: 1792
+    frequency_dim: 1024
+
+  classifier:
+    # Final MLP classifier for REAL/FAKE prediction
+    # Description: 2816 → [1024, 512, 256] → 2 (REAL/FAKE logits)
+    input_dim: 2816
+    num_classes: 2
+    hidden_dims: null  # null = [1024, 512, 256]
+    dropout_rate: 0.2
+    use_batch_norm: true  # Uses LayerNorm for batch_size=1 support
+
+    # Weight initialization if no pretrained weights provided
+    initialization: kaiming  # He initialization for ReLU activations
+
+dataset:
+  # Dataset configuration
+
+  # Dataset paths (defined in paths section)
+  # train_csv, test_csv, eval_csv
+
+  # Dataset splitting configuration
+  split:
+    enabled: true
+    train_ratio: 0.7
+    test_ratio: 0.15
+    eval_ratio: 0.15
+    random_state: 42  # Seed for reproducibility
+
+  # Class balancing configuration
+  balance:
+    enabled: true
+    method: oversample  # Implemented options: oversample, undersample
+    # oversample: duplicate minority class samples
+    # undersample: reduce majority class samples
+
+data_augmentation:
+  # Data augmentation parameters (applied only during training)
+  enabled: true
+
+  # Geometric transformations
+  horizontal_flip:
+    enabled: true
+    probability: 0.5
+
+  rotation:
+    enabled: true
+    degrees: 10  # Random rotation ±10 degrees
+
+  # Color transformations
+  color_jitter:
+    enabled: true
+    brightness: 0.2
+    contrast: 0.2
+    saturation: 0.1
+    hue: 0.05
+
+  # Image normalization (always applied)
+  normalize:
+    mean: [0.485, 0.456, 0.406]  # ImageNet mean (RGB)
+    std: [0.229, 0.224, 0.225]   # ImageNet std (RGB)
+
+data_loading:
+  # DataLoader configuration
+
+  # Worker configuration
+  num_workers: 8  # Number of parallel data loading workers
+  persistent_workers: true  # Keep workers alive between epochs
+
+  # Memory optimization
+  pin_memory: true  # Pin GPU memory for faster transfer
+
+  # Batch configuration
+  drop_last:
+    train: true  # Drop incomplete last batch in training
+    validation: false
+    test: false
+
+  # Shuffle configuration
+  shuffle:
+    train: true
+    validation: false
+    test: false
+
+  # Prefetching
+  prefetch_factor: 2  # Number of batches to prefetch per worker
+
+preprocessing:
+  # Preprocessing pipeline configuration
+
+  # Image preprocessing
+  image:
+    target_size: [224, 224]  # [width, height]
+    normalization:
+      mean: [0.485, 0.456, 0.406]  # ImageNet mean
+      std: [0.229, 0.224, 0.225]   # ImageNet std
+
+  # Face detection configuration
+  face_detection:
+    enabled: true
+    min_face_size: 40  # Minimum face size in pixels
+    confidence_threshold: 0.7  # YOLO detection confidence threshold
+    only_keep_top: true  # Keep only highest confidence face
+
+  # Face extraction configuration
+  face_extraction:
+    target_size: [224, 224]  # Output face dimensions
+    padding: 20  # Padding in pixels around face bbox
+    # Custom normalization method for face crops - If null, uses ImageNet stats from image normalization
+    normalization_method: zero_one  # Implemented ptions: zero_one, minus_one_one
+
+  # Frame extraction from videos
+  frame_extraction:
+    frames_per_second: 1  # FPS to extract (null = all frames)
+    batch_size: 32  # GPU decoding batch size
+    use_optimized: true  # Use PyAV vs OpenCV
+
+dataset_builder:
+  # Dataset building pipeline configuration
+
+  # Frame extraction settings
+  frame_builder:
+    fps: 1
+    device: cpu
+    batch_size: 32
+    num_save_threads: 4
+
+  # Face extraction settings
+  face_builder:
+    num_workers: 8
+    min_face_size: 40
+    confidence_threshold: 0.7
+    only_keep_top_face: true
+    face_target_size: [224, 224]
+    face_normalization_method: zero_one
+    face_padding: 20
+
+logging:
+  # Logging configuration
+  enabled: true
+  level: DEBUG
+  format: "%(asctime)s - %(name)s.%(funcName)s - %(levelname)s - %(message)s - %(lineno)d"
+  datefmt: "%Y-%m-%d %H:%M:%S"
+  # File logging
+  file:
+    enabled: true
+    # Path relative to logs_dir
+    path: training.log
+    backup_count: 5
+  console:
+    enabled: true
+    level: DEBUG
+
+  # Training progress logging
+  log_interval: 10  # Log metrics every N batches
+  eval_interval: 1  # Evaluate every N epochs
+
+  # Model internals logging
+  log_gradients: true  # Log gradient histograms
+  log_weights: true    # Log weight histograms
+
+wandb:
+  # Weights & Biases configuration
+  enabled: true
+  project: VeridisQuo
+  entity: null  # W&B team/user name (null = personal account)
+
+  # Experiment tracking
+  name: null  # Run name (null = auto-generated)
+  tags: []    # Tags for organizing runs
+  notes: null # Notes about the run
+
+  # Logging configuration
+  log_freq: 10  # Log every N batches
+
+  # What to log
+  log_model: true  # Upload model checkpoints
+  log_gradients: true
+  log_weights: true
+  log_confusion_matrix: true
+
+checkpointing:
+  # Model checkpoint configuration
+
+  # Save directory and naming
+  save_dir: models
+  model_name: deepfake_detector
+
+  # Checkpoint types
+  save_best: true  # Save best model based on validation loss
+  save_latest: true  # Save latest model every epoch
+
+  # Checkpoint filenames
+  best_checkpoint_name: "{model_name}_best.pth"
+  latest_checkpoint_name: "{model_name}_latest.pth"
+
+  # What to save in checkpoint
+  save_optimizer: true
+  save_scheduler: true
+  save_config: true
+  save_metrics: true
+
+  # Early stopping
+  early_stopping:
+    enabled: true
+    patience: 5  # Number of epochs without improvement
+    metric: val_loss  # Metric to monitor (val_loss, val_acc, etc.)
+    mode: min  # min for loss, max for accuracy
+
+metrics:
+  # Metrics tracked during training
+
+  # Loss metrics
+  loss:
+    train: true
+    validation: true
+    test: true
+
+  # Accuracy metrics
+  accuracy:
+    train: true
+    validation: true
+    test: true
+
+  # Per-class metrics (for validation and test)
+  per_class_metrics:
+    enabled: true
+    classes: [FAKE, REAL]
+    metrics:
+      - precision
+      - recall
+      - f1_score
+
+  # Confusion matrix
+  confusion_matrix:
+    enabled: true
+    normalize: false  # Whether to normalize confusion matrix
+
+performance:
+  # Performance optimization settings
+
+  # GPU optimization
+  gpu:
+    enabled: auto  # auto, true, false
+    cudnn_benchmark: true
+    allow_tf32: true  # Allow TensorFloat-32 on Ampere GPUs
+
+  # CPU threading
+  threading:
+    num_threads: null  # null = auto (all cores)
+
+  # Memory optimization
+  memory:
+    empty_cache_freq: 10  # Empty CUDA cache every N epochs
+    gradient_checkpointing: false  # Trade compute for memory
+
+# Quick start presets for common scenarios
+presets:
+  # Development preset (fast iteration)
+  development:
+    training:
+      batch_size: 16
+      num_epochs: 5
+      num_workers: 4
+    logging:
+      log_interval: 5
+      log_gradients: false
+      log_weights: false
+    wandb:
+      enabled: false
+
+  # Production preset (full training)
+  production:
+    training:
+      batch_size: 64
+      num_epochs: 25
+      num_workers: 8
+    logging:
+      log_interval: 10
+      log_gradients: true
+      log_weights: true
+    wandb:
+      enabled: true
+
+  # Small GPU preset (8GB VRAM)
+  small_gpu:
+    training:
+      batch_size: 16
+      use_mixed_precision: true
+    data_loading:
+      num_workers: 4
+    performance:
+      memory:
+        gradient_checkpointing: true

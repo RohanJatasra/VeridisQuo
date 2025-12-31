@@ -10,10 +10,9 @@ This module provides generic image processing functions including:
 import cv2
 import numpy as np
 import torch
-from typing import Tuple, Dict
-import logging
+from logging import Logger, getLogger
 
-logger: logging.Logger = logging.getLogger("/".join(__file__.split("/")[-2:]))  
+logger: Logger = getLogger("/".join(__file__.split("/")[-2:]))  
 
 def convert_to_luminance(image: np.ndarray) -> np.ndarray:
     """Convert RGB/BGR image to luminance (Y channel of YCbCr).
