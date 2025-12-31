@@ -38,7 +38,7 @@ PREPROCESSED_DATASET_DIR: Path = PROJECT_ROOT / "data"
 
 # Published models on Hugging Face fetched for inference engine
 HF_REPO_ID: str = "Gazeux33/VeridisQuo"
-MODEL_FILENAME: str = "veridisquo_40M.pth"
+MODEL_FILENAME: str = "veridisquo_25M.pth"
 HF_MODEL_URL: str = f"https://huggingface.co/{HF_REPO_ID}/resolve/main/{MODEL_FILENAME}"
 
 # Preprocessing parameters
