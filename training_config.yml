@@ -1,5 +1,9 @@
 # VeridisQuo Training Configuration - Complete parameter registry for training pipeline
 
+type: training
+
+name: training_config
+
 paths:
   # Data directories for training pipeline
   project_root: ./
@@ -23,9 +27,11 @@ paths:
   eval_csv: data/preprocessed_dataset/eval.csv
 
   # Model and output paths
-  output_dir: output/training
-  model_dir: models
-  logs_dir: logs/training
+  output:
+    # Directory to save training outputs
+    results_dir: output/training
+    model_dir: models
+    logs_dir: logs/training
 
   # Model weights paths
   models:
@@ -36,7 +42,7 @@ paths:
       custom_weights_path: null
     frequency_extractor:
       # Custom weights for frequency feature extractor MLP fusion
-      fusion_weights_path: null
+      custom_weights_path: null
     classifier:
       # Custom weights for final classifier MLP
       custom_weights_path: null
@@ -115,8 +121,6 @@ model_architecture:
     # EfficientNet-B4 for spatial feature extraction
     # Description: Pretrained on ImageNet, extracts spatial features from faces
     name: EfficientNet-B4
-    pretrained: true
-    custom_weights_path: null
     output_dim: 1792
 
   frequency_features:
@@ -308,14 +312,15 @@ dataset_builder:
 
 logging:
   # Logging configuration
-
+  enabled: true
+  level: DEBUG
+  format: "%(asctime)s - %(name)s.%(funcName)s - %(levelname)s - %(message)s - %(lineno)d"
+  datefmt: "%Y-%m-%d %H:%M:%S"
   # File logging
   file:
     enabled: true
-    path: logs/training/training.log
-    level: DEBUG
-    format: "%(asctime)s - %(name)s.%(funcName)s - %(levelname)s - %(message)s - %(lineno)d"
-    datefmt: "%Y-%m-%d %H:%M:%S"
+    # Path relative to logs_dir
+    path: training.log
     backup_count: 5
   console:
     enabled: true

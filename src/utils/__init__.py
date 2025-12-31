@@ -11,22 +11,9 @@ from .images_utils import (
     is_bgr,
     torch_to_numpy
 )
-from .config import (
-    load_config,
-    load_paths_config,
-    load_device_config,
-    load_model_architecture_config,
-    load_preprocessing_config,
-    load_inference_config,
-    load_logging_config,
-    load_performance_config,
-    load_production_config,
-    load_frequency_features_config,
-    load_spatial_features_config,
-    load_classifier_config,
-    load_face_detection_config,
-    load_frame_extraction_config
-)
+from .utils import get_device
+from .inference_results_dataclasses import InferenceResult, VideoInferenceResult
+from .config_services import ConfigService
 
 __all__ = [
     "CSVService",
@@ -36,18 +23,8 @@ __all__ = [
     "is_grayscale",
     "is_bgr",
     "torch_to_numpy",
-    "load_config",
-    "load_paths_config",
-    "load_device_config",
-    "load_model_architecture_config",
-    "load_preprocessing_config",
-    "load_inference_config",
-    "load_logging_config",
-    "load_performance_config",
-    "load_production_config",
-    "load_frequency_features_config",
-    "load_spatial_features_config",
-    "load_classifier_config",
-    "load_face_detection_config",
-    "load_frame_extraction_config"
+    "get_device",
+    "InferenceResult",
+    "VideoInferenceResult",
+    "ConfigService"
 ]
