@@ -10,9 +10,9 @@ class FusionMLP(nn.Module):
     def __init__(self,
         input_dim: int,
         output_dim: int,
-        hidden_dims: Optional[List[int]] = None,
-        dropout_rate: float = 0.2,
-        use_batch_norm: bool = True
+        dropout_rate: float,
+        use_batch_norm: bool,
+        hidden_dims: Optional[List[int]] =None
     ):
         """Initialize FusionMLP.
         Parameters:
@@ -35,8 +35,9 @@ class FusionMLP(nn.Module):
             assert 0.0 <= dropout_rate < 1.0, f"Dropout rate must be in [0, 1), got {dropout_rate}"
 
         except AssertionError as e:
-            self.logger.fatal(f"Invalid parameters: {e}")
-            raise ValueError(f"Invalid parameters: {e}")
+            err_msg = f"Invalid parameters: {e}"
+            self.logger.fatal(err_msg)
+            raise ValueError(err_msg)
 
         if hidden_dims is None:
             hidden_dims = [input_dim, input_dim // 2]
@@ -72,14 +73,13 @@ class FusionMLP(nn.Module):
 
         self.logger.info(f"FusionMLP initialized: {input_dim} -> {hidden_dims} -> {output_dim}")
 
-    def _initialize_weights(self) -> None:
+    def _initialize_weights(self, nonlinearity='relu') -> None:
         """Initialize MLP weights with Kaiming initialization for ReLU.
-
         Uses He initialization for Linear layers to prevent vanishing/exploding gradients.
         """
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity=nonlinearity)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
             elif isinstance(m, (nn.BatchNorm1d, nn.LayerNorm)):
