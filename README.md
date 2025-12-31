@@ -25,9 +25,9 @@
 <br>
 
 **Hybrid Detection System:**
-- 🖼️ **Spatial Stream:** EfficientNet-B4 extracts visual features (1792-dim)
-- 📊 **Frequency Stream:** FFT + DCT detect compression artifacts (1024-dim)
-- 🎯 **Classifier:** Multi-layer MLP for binary classification
+- **Spatial Stream:** EfficientNet-B4 extracts visual features (1792-dim)
+- **Frequency Stream:** FFT + DCT detect compression artifacts (1024-dim)
+- **Classifier:** Multi-layer MLP for binary classification
 
 **Model Specifications:**
 
@@ -114,35 +114,6 @@ flowchart TB
     style Classifier_Module fill:#0d1117,stroke:#ec4899,color:#ec4899
     style Gradcam_Module fill:#0d1117,stroke:#a855f7,color:#a855f7
     style Processing fill:transparent,stroke:none
-```
-
-
-
-## Prerequisites
-
-Install [uv](https://docs.astral.sh/uv/):
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# OR
-pip install uv
-```
-
-## Launch
-
-```bash
-./scripts/dev.sh
-# OR
-uv sync
-uv run python src/main.py
-```
-
-## Tests
-
-```bash
-./scripts/run_tests.sh
-# OR
-uv sync --extra dev
-uv run pytest tests/ -v
 ```
 
 
@@ -263,5 +234,25 @@ We extracted the frames and faces from these videos to create our dataset:
 </td>
 </tr>
 </table>
+
+
+## Prerequisites
+
+Install [uv](https://docs.astral.sh/uv/):
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# OR
+pip install uv
+```
+
+## Launch
+
+```bash
+./scripts/dev.sh
+# OR
+uv sync
+uv run python src/main.py
+```
+
 
 
