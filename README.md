@@ -6,11 +6,13 @@
     
 ### *Where is the truth?*
     
-**What is Veridis Quo?**
+#### **What is Veridis Quo?**
 
 A state-of-the-art neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame using explainable AI.
 
-**The Era of Video Manipulation**
+---
+
+#### **The Era of Video Manipulation**
 
 At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake.
 
