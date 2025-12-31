@@ -9,13 +9,33 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![HuggingFace](https://img.shields.io/badge/🤗%20Model-VeridisQuo-yellow?style=for-the-badge)](https://huggingface.co/Gazeux33/VeridisQuo/tree/main)
 
-At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake.
+> [!WARNING]
+> **The Era of Video Manipulation**
+>
+> At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake.
 
-**Veridis Quo** is a neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame.
+> [!NOTE]
+> **What is Veridis Quo?**
+>
+> A state-of-the-art neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame using explainable AI.
 
-**Architecture:** Hybrid detection combining spatial features (EfficientNet-B4) with frequency-domain analysis (FFT + DCT) for binary classification.
+<details>
+<summary><b>🏗️ Architecture Overview</b></summary>
 
-**Model:** 40.8M parameters • 224×224 RGB input • 2816-dim features
+<br>
+
+**Hybrid Detection System:**
+- 🖼️ **Spatial Stream:** EfficientNet-B4 extracts visual features (1792-dim)
+- 📊 **Frequency Stream:** FFT + DCT detect compression artifacts (1024-dim)
+- 🎯 **Classifier:** Multi-layer MLP for binary classification
+
+**Model Specifications:**
+
+![Parameters](https://img.shields.io/badge/Parameters-40.8M-blue?style=flat-square)
+![Input](https://img.shields.io/badge/Input-224×224_RGB-green?style=flat-square)
+![Features](https://img.shields.io/badge/Features-2816--dim-purple?style=flat-square)
+
+</details>
 
 </td>
 <td width="40%" valign="middle" align="center">
