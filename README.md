@@ -9,15 +9,13 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![HuggingFace](https://img.shields.io/badge/🤗%20Model-VeridisQuo-yellow?style=for-the-badge)](https://huggingface.co/Gazeux33/VeridisQuo/tree/main)
 
-> [!WARNING]
-> **The Era of Video Manipulation**
->
-> At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake.
-
-> [!NOTE]
 > **What is Veridis Quo?**
 >
 > A state-of-the-art neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame using explainable AI.
+
+> **The Era of Video Manipulation**
+>
+> At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake.
 
 <details>
 <summary><b>🏗️ Architecture Overview</b></summary>
@@ -28,12 +26,6 @@
 - **Spatial Stream:** EfficientNet-B4 extracts visual features (1792-dim)
 - **Frequency Stream:** FFT + DCT detect compression artifacts (1024-dim)
 - **Classifier:** Multi-layer MLP for binary classification
-
-**Model Specifications:**
-
-![Parameters](https://img.shields.io/badge/Parameters-40.8M-blue?style=flat-square)
-![Input](https://img.shields.io/badge/Input-224×224_RGB-green?style=flat-square)
-![Features](https://img.shields.io/badge/Features-2816--dim-purple?style=flat-square)
 
 </details>
 
@@ -116,6 +108,43 @@ flowchart TB
     style Processing fill:transparent,stroke:none
 ```
 
+---
+
+## Model Specifications
+
+<table>
+<tr>
+<td width="33%" align="center">
+
+![Parameters](https://img.shields.io/badge/Parameters-40.8M-blue?style=for-the-badge)
+
+**Total Parameters**
+
+All trainable
+
+</td>
+<td width="33%" align="center">
+
+![Input](https://img.shields.io/badge/Input-224×224_RGB-green?style=for-the-badge)
+
+**Input Resolution**
+
+RGB images
+
+</td>
+<td width="34%" align="center">
+
+![Features](https://img.shields.io/badge/Features-2816--dim-purple?style=for-the-badge)
+
+**Feature Vector**
+
+Combined spatial + frequency
+
+</td>
+</tr>
+</table>
+
+---
 
 
 
