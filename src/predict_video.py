@@ -2,7 +2,7 @@ from inference import InferenceEngine
 from logging import basicConfig, StreamHandler, FileHandler, getLogger
 from dotenv import load_dotenv, find_dotenv
 from config import LOGS_DIR, LOG_FILE, LOG_LEVEL, LOG_FORMAT, LOG_DATEFMT, TEST_DATA_FOLDER, PROJECT_ROOT
-from utils.config import load_config
+from utils.config_services import ConfigService
 from utils.config_dataclasses import InferenceConfig
 
 def init_logging_system():
@@ -26,7 +26,7 @@ if __name__ == "__main__":
 
     # Load configuration from JSON
     config_path = PROJECT_ROOT / "config.json"
-    config_dict = load_config(config_path)
+    config_dict = ConfigService.load_config(config_path)
     config = InferenceConfig.from_dict(config_dict)
 
     # Initialize engine
