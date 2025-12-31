@@ -4,6 +4,91 @@ Veridis Quo is a neural network designed to **detect deepfake videos** and **hig
 
 TODO...
 
+
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#1a1a2e', 'primaryTextColor': '#fff', 'primaryBorderColor': '#7C0000', 'lineColor': '#ffffff', 'secondaryColor': '#006100', 'tertiaryColor': '#fff', 'background': '#0d1117', 'mainBkg': '#0d1117', 'secondBkg': '#0d1117'}}}%%
+
+flowchart LR
+    subgraph Preprocess[" Preprocess "]
+        A[MP4 Video]
+        B[Frames extraction]
+        C[Faces detection]
+        D[Faces extraction]
+        A --> B
+        B -->|"batch, 3, 224, 224"| C
+        C -->|"batch, 3, 224, 224"| D
+    end
+
+    subgraph Gradcam_Module[" Gradcam Module "]
+        O[GradcamComputation]
+        P[GradcamVisualization]
+        Q((Remap))
+        R[Final ManipulatedVideo]
+        O --> P
+        P --> Q
+        Q --> R
+    end
+
+    subgraph Spatial_Module[" Spatial Module "]
+        E[Features ExtractionEfficientNet]
+        F((Pooled))
+        E -->|"batch, 1792, 7, 7"| F
+    end
+
+    subgraph Frequency_Module[" Frequency Module "]
+        G[DCT Extractorblocks=8×8, freq_bands]
+        H[FFT Extractorradial bands=8, hann window]
+        I((Concat))
+        J[FusionMLP1024→1024→512→1024]
+        G -->|"batch, 512"| I
+        H -->|"batch, 512"| I
+        I -->|"batch, 1024"| J
+    end
+
+    subgraph Classifier_Module[" Classifier Module "]
+        K((Concat))
+        L[MLP]
+        M[Frames Aggregation]
+        N[Final Score]
+        K -->|"batch, 2816"| L
+        L -->|"batch, 2"| M
+        M --> N
+    end
+
+    D -->|"batch, 3, 224, 224"| E
+    D --> G
+    D --> H
+    
+    F -->|"batch, 1792"| K
+    J -->|"batch, 1024"| K
+    
+    E --> O
+    D --> Q
+
+    %% Styling
+    classDef input fill:#1a1a2e,stroke:#6b7280,color:#fff
+    classDef preprocess fill:#1a1a2e,stroke:#f59e0b,color:#f59e0b
+    classDef spatial fill:#1a1a2e,stroke:#10b981,color:#10b981
+    classDef frequency fill:#1a1a2e,stroke:#3b82f6,color:#3b82f6
+    classDef classifier fill:#1a1a2e,stroke:#ec4899,color:#ec4899
+    classDef gradcam fill:#1a1a2e,stroke:#a855f7,color:#a855f7
+    classDef output fill:#1a1a2e,stroke:#6b7280,color:#fff
+
+    class A,R input
+    class B,C,D preprocess
+    class E,F spatial
+    class G,H,I,J frequency
+    class K,L,M,N classifier
+    class O,P,Q gradcam
+
+    style Preprocess fill:#0d1117,stroke:#f59e0b,color:#f59e0b
+    style Spatial_Module fill:#0d1117,stroke:#10b981,color:#10b981
+    style Frequency_Module fill:#0d1117,stroke:#3b82f6,color:#3b82f6
+    style Classifier_Module fill:#0d1117,stroke:#ec4899,color:#ec4899
+    style Gradcam_Module fill:#0d1117,stroke:#a855f7,color:#a855f7
+```
+
 ## Param
 ```bash
 Total params: 40,798,098
