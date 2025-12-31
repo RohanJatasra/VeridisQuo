@@ -1,10 +1,33 @@
+<table>
+<tr>
+<td width="60%" valign="middle">
+
 # Veridis Quo
-**Where is the truth?** At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake. 
-Veridis Quo is a neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame.
+### *Where is the truth?*
 
-TODO...
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![HuggingFace](https://img.shields.io/badge/🤗%20Model-VeridisQuo-yellow?style=for-the-badge)](https://huggingface.co/Gazeux33/VeridisQuo/tree/main)
+
+At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake.
+
+**Veridis Quo** is a neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame.
+
+**Architecture:** Hybrid detection combining spatial features (EfficientNet-B4) with frequency-domain analysis (FFT + DCT) for binary classification.
+
+**Model:** 40.8M parameters • 224×224 RGB input • 2816-dim features
+
+</td>
+<td width="40%" valign="middle" align="center">
+
+<img src="./assets/logo/VeridisQuo.png" alt="VeridisQuo Logo" width="100%">
+
+</td>
+</tr>
+</table>
 
 
+# Pipeline
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#1a1a2e', 'primaryTextColor': '#fff', 'lineColor': '#ffffff', 'background': '#0d1117', 'mainBkg': '#0d1117'}}}%%
@@ -73,17 +96,7 @@ flowchart TB
     style Processing fill:transparent,stroke:none
 ```
 
-## Param
-```bash
-Total params: 40,798,098
-Trainable params: 40,798,098
-Non-trainable params: 0
-----------------------------------------------------------------
-Input size (MB): 0.57
-Forward/backward pass size (MB): 300.57
-Params size (MB): 155.63
-Estimated Total Size (MB): 456.78
-```
+
 
 ## Prerequisites
 
@@ -232,51 +245,3 @@ We extracted the frames and faces from these videos to create our dataset:
 </table>
 
 
-## Project Structure
-```
-veridisquo/
-├── scripts/                   # Helper scripts
-│   ├── dev.sh                 # Development environment setup script
-│   └── run_tests.sh           # Unit tests execution script
-├── src/                       # Source code
-│   ├── preprocessing/         # Data preprocessing module
-│   ├── spatial/               # Spatial feature extraction module
-│   ├── data/                  # Dataset loaders module
-│   ├── frequal/               # Frequency feature extraction module
-│   └── main.py                # Main script
-├── tests/                     # Unit tests
-│   ├── preprocessing/         # Tests for data preprocessing
-│   ├── spatial/               # Tests for spatial feature extraction
-│   └── frequal/               # Tests for frequency feature extraction
-├── README.md                  # Project documentation
-└── pyproject.toml             # Project configuration
-```
-
-### Frequency Analysis Module Structure
-```
-  BaseFrequencyExtractor (ABC)
-  │   ├── extract() [template method]
-  │   ├── _preprocess_image() [abstract]
-  │   ├── _apply_transform() [abstract]
-  │   └── _extract_features() [abstract]
-  ├── BaseFFTExtractor(BaseFrequencyExtractor) (ABC)
-  │   │   ├── Constantes FFT
-  │   │   ├── _apply_transform() → call _apply_fft()
-  │   │   ├── _extract_features() → call _extract_frequency_features()
-  │   │   ├── _apply_fft() [abstract]
-  │   │   └── _extract_frequency_features() [abstract]
-  │   ├── NpFFTExtractor(BaseFFTExtractor)
-  │   │   └── NumPy implementations
-  │   └── TorchFFTExtractor(nn.Module, BaseFFTExtractor)
-  │       └── PyTorch implementations
-  └── BaseDCTExtractor(BaseFrequencyExtractor) (ABC)
-      │   ├── Constantes DCT (AVAILABLE_AGGREGATION_METHODS, DEFAULT_BLOCK_SIZE, etc.)
-      │   ├── _apply_transform() → call _extract_dct_blocks()
-      │   ├── _extract_features() → call _aggregate_block_features()
-      │   ├── _extract_dct_blocks() [abstract]
-      │   └── _aggregate_block_features() [abstract]
-      ├── NpDCTExtractor(BaseDCTExtractor)
-      │   └── NumPy implementations + 3 aggregation methods
-      └── TorchDCTExtractor(BaseDCTExtractor)
-          └── PyTorch implementations
-```
