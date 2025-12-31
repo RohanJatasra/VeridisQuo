@@ -183,15 +183,14 @@ async def analyze_video(
 async def download_output(
     request: Request,
     filename: str,
-    background_tasks: BackgroundTasks,
 ) -> FileResponse:
     """
     Download a generated output file (e.g., GradCAM visualization video).
 
-    Files are automatically cleaned up after download.
+    Note: Files are NOT automatically cleaned up to support video streaming.
+    Use DELETE /outputs/{filename} to manually clean up files.
     """
     settings = get_settings(request)
-    service = get_service(request)
 
     file_path = settings.output_dir / filename
 
@@ -204,9 +203,8 @@ async def download_output(
     except ValueError:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # Schedule cleanup after download
-    if settings.cleanup_after_response:
-        background_tasks.add_task(service.cleanup_file, file_path)
+    # Don't cleanup here - browsers make multiple Range requests for video streaming
+    # Use DELETE endpoint to manually cleanup files
 
     return FileResponse(
         path=file_path,
