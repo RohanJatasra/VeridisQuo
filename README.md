@@ -1,19 +1,18 @@
+# Veridis Quo
+
 <table>
 <tr>
-<td width="60%" valign="middle">
-
-# Veridis Quo
+<td width="60%" >
+    
 ### *Where is the truth?*
-
-[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![HuggingFace](https://img.shields.io/badge/🤗%20Model-VeridisQuo-yellow?style=for-the-badge)](https://huggingface.co/Gazeux33/VeridisQuo/tree/main)
-
+    
 **What is Veridis Quo?**
-> A state-of-the-art neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame using explainable AI.
+
+A state-of-the-art neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame using explainable AI.
 
 **The Era of Video Manipulation**
-> At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake.
+
+At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake.
 
 
 </td>
@@ -97,41 +96,6 @@ flowchart TB
 
 ---
 
-## Model Specifications
-
-<table>
-<tr>
-<td width="33%" align="center">
-
-![Parameters](https://img.shields.io/badge/Parameters-40.8M-blue?style=for-the-badge)
-
-**Total Parameters**
-
-All trainable
-
-</td>
-<td width="33%" align="center">
-
-![Input](https://img.shields.io/badge/Input-224×224_RGB-green?style=for-the-badge)
-
-**Input Resolution**
-
-RGB images
-
-</td>
-<td width="34%" align="center">
-
-![Features](https://img.shields.io/badge/Features-2816--dim-purple?style=for-the-badge)
-
-**Feature Vector**
-
-Combined spatial + frequency
-
-</td>
-</tr>
-</table>
-
----
 
 
 
