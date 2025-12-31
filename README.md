@@ -9,25 +9,12 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![HuggingFace](https://img.shields.io/badge/🤗%20Model-VeridisQuo-yellow?style=for-the-badge)](https://huggingface.co/Gazeux33/VeridisQuo/tree/main)
 
-> **What is Veridis Quo?**
->
+**What is Veridis Quo?**
 > A state-of-the-art neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame using explainable AI.
 
-> **The Era of Video Manipulation**
->
+**The Era of Video Manipulation**
 > At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake.
 
-<details>
-<summary><b>🏗️ Architecture Overview</b></summary>
-
-<br>
-
-**Hybrid Detection System:**
-- **Spatial Stream:** EfficientNet-B4 extracts visual features (1792-dim)
-- **Frequency Stream:** FFT + DCT detect compression artifacts (1024-dim)
-- **Classifier:** Multi-layer MLP for binary classification
-
-</details>
 
 </td>
 <td width="40%" valign="middle" align="center">
