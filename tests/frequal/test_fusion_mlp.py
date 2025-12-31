@@ -29,16 +29,18 @@ class TestFusionMLPInitialization:
     def test_init_with_batch_norm(self):
         """Test initialization with batch normalization."""
         mlp = FusionMLP(input_dim=1024, output_dim=512, use_batch_norm=True)
-        #check that BatchNorm1d layers are present
-        has_batch_norm = any(isinstance(layer, nn.BatchNorm1d) for layer in mlp.mlp)
-        assert has_batch_norm
+        #check that LayerNorm layers are present (uses LayerNorm instead of BatchNorm for batch_size=1 support)
+        has_layer_norm = any(isinstance(layer, nn.LayerNorm) for layer in mlp.mlp)
+        assert has_layer_norm
 
     def test_init_without_batch_norm(self):
         """Test initialization without batch normalization."""
         mlp = FusionMLP(input_dim=1024, output_dim=512, use_batch_norm=False)
-        #check that no BatchNorm1d layers are present
+        #check that no normalization layers are present
         has_batch_norm = any(isinstance(layer, nn.BatchNorm1d) for layer in mlp.mlp)
+        has_layer_norm = any(isinstance(layer, nn.LayerNorm) for layer in mlp.mlp)
         assert not has_batch_norm
+        assert not has_layer_norm
 
     def test_init_with_dropout(self):
         """Test initialization with dropout."""
