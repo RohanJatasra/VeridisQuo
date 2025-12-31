@@ -10,8 +10,6 @@ class BaseDCTExtractor(BaseFrequencyExtractor):
 
     AVAILABLE_AGGREGATION_METHODS = ["zigzag", "frequency_bands", "statistical"]
     """Available methods for aggregating DCT block features (implementation constant)"""
-    DEFAULT_BLOCK_SIZE = 8
-    """Default DCT block size (JPEG standard, implementation constant)"""
 
     def __init__(self,
         block_size: int,
@@ -82,5 +80,6 @@ class BaseDCTExtractor(BaseFrequencyExtractor):
                 #block_size^2 positions × 3 statistics
                 return (self.block_size ** 2) * 3
             case _:
-                self.logger.fatal(f"Unknown aggregation method: {self.aggregation_method}")
-                raise ValueError(f"Unknown aggregation method: {self.aggregation_method}")
+                error_msg = f"Unknown aggregation method: {self.aggregation_method}"
+                self.logger.fatal(error_msg)
+                raise ValueError(error_msg)

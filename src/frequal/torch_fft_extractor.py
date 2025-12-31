@@ -17,14 +17,15 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         window_function: str,
         high_freq_emphasis: bool,
         feature_dim: int,
-        num_azimuthal_sectors: int = 8,
-        high_freq_threshold_ratio: float = 0.5,
-        artifact_edge_width: int = 5,
-        artifact_num_radial_samples: int = 50,
-        artifact_center_region_size: int = 20,
-        default_smoothing_kernel_size: int = 5,
-        energy_band_start_multiplier: int = 2,
-        energy_band_end_multiplier: int = 3,
+        num_azimuthal_sectors: int,
+        high_freq_threshold_ratio: float,
+        artifact_edge_width: int,
+        artifact_num_radial_samples: int,
+        artifact_center_region_size: int,
+        default_smoothing_kernel_size: int,
+        energy_band_start_multiplier: int,
+        energy_band_end_multiplier: int,
+        used_image_size: int,
         epsilon: float = 1e-10
     ):
         """Initialize TorchFFTExtractor.
@@ -66,8 +67,11 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
             epsilon=epsilon
         )
 
-        self.register_buffer('window_224', self._create_window(224))
-        """Precomputed 224x224 window function"""
+        self.used_image_size: int = used_image_size
+        """Expected input image size (assumed square)"""
+        
+        self.register_buffer("window_buffer", self._create_window(used_image_size))
+        """Precomputed wxh window function"""
 
         self.logger.info("TorchFFTExtractor initialized successfully.")
 
@@ -89,6 +93,7 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         elif self.window_function == "blackman":
             window_1d = torch.blackman_window(size, periodic=False)
         else:
+            self.logger.warning(f"Unknown window function '{self.window_function}', using rectangular window")
             window_1d = torch.ones(size)
 
         #create 2D window via outer product
@@ -107,14 +112,13 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
             ValueError: if image shape or format is invalid
         """
         try:
-            assert len(images.shape) == 4, \
-                f"Images must be 4D [batch, C, H, W], got shape {images.shape}"
-            assert images.shape[1] == 3, \
-                f"Images must have 3 channels (RGB), got {images.shape[1]}"
+            assert len(images.shape) == 4, f"Images must be 4D [batch, C, H, W], got shape {images.shape}"
+            assert images.shape[1] == 3, f"Images must have 3 channels (RGB), got {images.shape[1]}"
 
         except AssertionError as e:
-            self.logger.error(f"- extract - {e}")
-            raise ValueError(f"Invalid input images: {e}")
+            err_msg = f"Invalid input images: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
         batch_size = images.shape[0]
 
@@ -130,7 +134,7 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         #project to target dimension using learnable projection
         projected_features = self.projection(raw_features)
 
-        self.logger.debug(f"- extract - Extracted FFT features with shape {projected_features.shape}")
+        self.logger.debug(f"Extracted FFT features with shape {projected_features.shape}")
 
         return projected_features
 
@@ -151,7 +155,7 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
                 channel_images = self._convert_to_grayscale(images)
             elif self.channel_mode == "per_channel":
                 #per_channel mode not fully implemented
-                self.logger.warning("- _preprocess_images - per_channel mode not fully supported, using luminance")
+                self.logger.warning("'per_channel' mode not fully supported, using luminance")
                 channel_images = self._convert_to_luminance(images)
             else:
                 raise ValueError(f"Unknown channel mode: {self.channel_mode}")
@@ -163,9 +167,9 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
             #apply window function to reduce spectral leakage
             if self.window_function != "none":
                 h, w = channel_images.shape[1], channel_images.shape[2]
-                if h == 224 and w == 224:
+                if h == self.used_image_size and w == self.used_image_size:
                     #use precomputed window
-                    window = self.window_224
+                    window = self.window_buffer
                 else:
                     #create window on-the-fly
                     window = self._create_window(h).to(channel_images.device)
@@ -177,8 +181,9 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
             return windowed_images
 
         except Exception as e:
-            self.logger.error(f"- _preprocess_images - {e}")
-            raise ValueError(f"Error preprocessing images: {e}")
+            err_msg = f"Error preprocessing images: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
     def _convert_to_luminance(self, images: torch.Tensor) -> torch.Tensor:
         """Convert RGB images to luminance (Y channel from YCbCr).
@@ -228,8 +233,9 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
             return log_magnitude
 
         except Exception as e:
-            self.logger.error(f"- _apply_fft - Error computing FFT: {e}")
-            raise RuntimeError(f"Error computing FFT: {e}")
+            err_msg = f"Error computing FFT: {e}"
+            self.logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
     def _extract_frequency_features(self, magnitude_spectrum: torch.Tensor) -> torch.Tensor:
         """Extract comprehensive frequency features from magnitude spectrum.
@@ -387,12 +393,12 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         sector_means_list = []
         sector_variances_list = []
 
-        for sector_idx in range(self.NUM_AZIMUTHAL_SECTORS):
+        for sector_idx in range(self.num_azimuthal_sectors):
             angle_start = -math.pi + sector_idx * sector_width
             angle_end = angle_start + sector_width
 
             # Create mask [H, W]
-            if sector_idx == self.NUM_AZIMUTHAL_SECTORS - 1:
+            if sector_idx == self.num_azimuthal_sectors - 1:
                 mask = (angles >= angle_start) | (angles < -math.pi + sector_width)
             else:
                 mask = (angles >= angle_start) & (angles < angle_end)
@@ -504,7 +510,7 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         device = magnitude_spectrum.device
 
         max_radius = self._compute_max_radius(center)
-        high_freq_threshold = max_radius * self.HIGH_FREQ_THRESHOLD_RATIO
+        high_freq_threshold = max_radius * self.high_freq_threshold_ratio
 
         #create distance map
         y = torch.arange(h, device=device).view(-1, 1).float()
@@ -517,7 +523,7 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         high_freq_energy = torch.sum(magnitude_spectrum * high_freq_mask.unsqueeze(0) ** 2, dim=[1, 2])
         total_energy = torch.sum(magnitude_spectrum ** 2, dim=[1, 2])
 
-        return high_freq_energy / (total_energy + self.EPSILON)
+        return high_freq_energy / (total_energy + self.epsilon)
 
     def _extract_artifact_features(self,
         magnitude_spectrum: torch.Tensor,
@@ -534,7 +540,7 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         device = magnitude_spectrum.device
 
         #Nyquist frequencies on edges of the spectrum can indicate checkerboard artifacts
-        edge = self.ARTIFACT_EDGE_WIDTH
+        edge = self.artifact_edge_width
         top_edge = torch.mean(magnitude_spectrum[:, 0:edge, :], dim=[1, 2])
         bottom_edge = torch.mean(magnitude_spectrum[:, -edge:, :], dim=[1, 2])
         left_edge = torch.mean(magnitude_spectrum[:, :, 0:edge], dim=[1, 2])
@@ -543,7 +549,7 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
 
         #upsampling signatures (periodic peaks in spectrum)
         max_radius = self._compute_max_radius(center)
-        num_samples = self.ARTIFACT_NUM_RADIAL_SAMPLES
+        num_samples = self.artifact_num_radial_samples
         radii = torch.linspace(0, max_radius, num_samples, device=device)
 
         #create distance map
@@ -583,7 +589,7 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         vertical_asymmetry = torch.abs(torch.mean(top_half, dim=[1, 2]) - torch.mean(bottom_half, dim=[1, 2]))
 
         #coherence of medium-high frequency region
-        region_size = self.ARTIFACT_CENTER_REGION_SIZE
+        region_size = self.artifact_center_region_size
         center_region = magnitude_spectrum[:, center[0]-region_size:center[0]+region_size, center[1]-region_size:center[1]+region_size]
         high_freq_variance = torch.var(center_region, dim=[1, 2])
 
@@ -602,7 +608,7 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
 
         return features
 
-    def _smooth_spectrum(self, spectrum: torch.Tensor, kernel_size: int = None) -> torch.Tensor:
+    def _smooth_spectrum(self, spectrum: torch.Tensor, kernel_size: int) -> torch.Tensor:
         """Smooth spectrum using average pooling.
         Parameters:
             spectrum (torch.Tensor): input spectrum [batch, height, width]
@@ -610,9 +616,6 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         Returns:
             torch.Tensor: smoothed spectrum [batch, height, width]
         """
-        if kernel_size is None:
-            kernel_size = self.DEFAULT_SMOOTHING_KERNEL_SIZE
-
         #use average pooling for smoothing
         spectrum_4d = spectrum.unsqueeze(1)
 
@@ -634,22 +637,21 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
 
         #band energies from radial features [means, variances, energies, peaks, profile]
         num_bands = self.num_radial_bands
-        energies = radial_features[:, num_bands * self.ENERGY_BAND_START_MULTIPLIER: num_bands * self.ENERGY_BAND_END_MULTIPLIER]
+        energies = radial_features[:, num_bands * self.energy_band_start_multiplier: num_bands * self.energy_band_end_multiplier]
 
         if num_bands < 2:
             return torch.zeros(batch_size, 5, device=device)
 
         #energy ratios between consecutive bands
-        ratio_1_2 = energies[:, 1] / (energies[:, 0] + self.EPSILON)
-        ratio_2_3 = energies[:, 2] / (energies[:, 1] + self.EPSILON) if num_bands > 2 else torch.zeros(batch_size, device=device)
-        ratio_low_high = energies[:, 0] / (energies[:, -1] + self.EPSILON)
+        ratio_1_2 = energies[:, 1] / (energies[:, 0] + self.epsilon)
+        ratio_2_3 = energies[:, 2] / (energies[:, 1] + self.epsilon) if num_bands > 2 else torch.zeros(batch_size, device=device)
+        ratio_low_high = energies[:, 0] / (energies[:, -1] + self.epsilon)
 
-        energy_slope = (energies[:, -1] - energies[:, 0]) / (num_bands + self.EPSILON)
-
+        energy_slope = (energies[:, -1] - energies[:, 0]) / (num_bands + self.epsilon)
         #entropy-like measure of energy distribution
-        total_energy = torch.sum(energies, dim=1, keepdim=True) + self.EPSILON
+        total_energy = torch.sum(energies, dim=1, keepdim=True) + self.epsilon
         energy_dist = energies / total_energy
-        energy_concentration = -torch.sum(energy_dist * torch.log2(energy_dist + self.EPSILON), dim=1)
+        energy_concentration = -torch.sum(energy_dist * torch.log2(energy_dist + self.epsilon), dim=1)
 
         features = torch.stack([
             ratio_1_2,

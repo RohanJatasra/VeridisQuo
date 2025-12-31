@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from typing import Tuple
-import logging
 from .utils import convert_to_luminance, convert_to_grayscale, convert_per_channel, create_2d_window, create_radial_mask, compute_spectral_stats, format_image
 from .base_fft_extractor import BaseFFTExtractor
 
@@ -16,14 +15,13 @@ class NpFFTExtractor(BaseFFTExtractor):
         window_function: str,
         high_freq_emphasis: bool,
         feature_dim: int,
-        num_azimuthal_sectors: int = 8,
-        high_freq_threshold_ratio: float = 0.5,
-        artifact_edge_width: int = 5,
-        artifact_num_radial_samples: int = 50,
-        artifact_center_region_size: int = 20,
-        default_smoothing_kernel_size: int = 5,
-        energy_band_start_multiplier: int = 2,
-        energy_band_end_multiplier: int = 3,
+        num_azimuthal_sectors: int,
+        high_freq_threshold_ratio: float,
+        artifact_edge_width: int,
+        artifact_num_radial_samples: int,
+        artifact_center_region_size: int,
+        energy_band_start_multiplier: int,
+        energy_band_end_multiplier: int,
         epsilon: float = 1e-10
     ):
         """Initialize NpFFTExtractor.
@@ -38,7 +36,6 @@ class NpFFTExtractor(BaseFFTExtractor):
             artifact_edge_width (int): width of edge regions for artifact detection
             artifact_num_radial_samples (int): number of radial samples for upsampling detection
             artifact_center_region_size (int): half-size of center region for variance analysis
-            default_smoothing_kernel_size (int): default kernel size for spectrum smoothing
             energy_band_start_multiplier (int): multiplier for energy band start index
             energy_band_end_multiplier (int): multiplier for energy band end index
             epsilon (float): small constant for numerical stability
@@ -57,7 +54,6 @@ class NpFFTExtractor(BaseFFTExtractor):
             artifact_edge_width=artifact_edge_width,
             artifact_num_radial_samples=artifact_num_radial_samples,
             artifact_center_region_size=artifact_center_region_size,
-            default_smoothing_kernel_size=default_smoothing_kernel_size,
             energy_band_start_multiplier=energy_band_start_multiplier,
             energy_band_end_multiplier=energy_band_end_multiplier,
             epsilon=epsilon
@@ -81,8 +77,9 @@ class NpFFTExtractor(BaseFFTExtractor):
             assert len(images.shape) in [3, 4], f"Images must be 3D [batch, H, W] or 4D [batch, H, W, C], got shape {images.shape}"
 
         except AssertionError as e:
-            self.logger.error(f"- extract - {e}")
-            raise ValueError(f"Invalid parameters: {e}")
+            err_msg = f"Invalid parameters: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
         batch_size = images.shape[0]
         batch_features = []
@@ -102,11 +99,12 @@ class NpFFTExtractor(BaseFFTExtractor):
                 batch_features.append(features)
 
             except Exception as e:
-                self.logger.error(f"- extract - Error processing image {i}: {e}")
-                raise RuntimeError(f"Error extracting features from image {i}: {e}")
+                err_msg = f"Error extracting features from image {i}: {e}"
+                self.logger.error(err_msg)
+                raise RuntimeError(err_msg)
 
         result = np.stack(batch_features, axis=0)
-        self.logger.debug(f"- extract - Extracted features with shape {result.shape}")
+        self.logger.debug(f"Extracted features with shape {result.shape}")
         return result
 
     def _preprocess_image(self, image: np.ndarray) -> np.ndarray:
@@ -129,7 +127,9 @@ class NpFFTExtractor(BaseFFTExtractor):
                 case "per_channel":
                     channel_image = convert_per_channel(image)
                 case _:
-                    raise ValueError(f"Unknown channel mode: {self.channel_mode}")
+                    err_msg = f"Unknown channel mode: {self.channel_mode}"
+                    self.logger.error(err_msg)
+                    raise ValueError(err_msg)
 
             image = channel_image.astype(np.float32)
 
@@ -140,8 +140,9 @@ class NpFFTExtractor(BaseFFTExtractor):
             return image
 
         except Exception as e:
-            self.logger.error(f"- _preprocess_image - {e}")
-            raise ValueError(f"Error preprocessing image: {e}")
+            err_msg = f"Error preprocessing image: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
     def _apply_fft(self, image: np.ndarray) -> np.ndarray:
         """Apply 2D FFT and compute centered magnitude spectrum.
@@ -166,8 +167,9 @@ class NpFFTExtractor(BaseFFTExtractor):
             return log_magnitude
 
         except Exception as e:
-            self.logger.error(f"- _apply_fft - Error computing FFT: {e}")
-            raise RuntimeError(f"Error computing FFT: {e}")
+            err_msg = f"Error computing FFT: {e}"
+            self.logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
     def _extract_frequency_features(self, magnitude_spectrum: np.ndarray) -> np.ndarray:
         """Extract comprehensive frequency features from magnitude spectrum.
@@ -304,11 +306,11 @@ class NpFFTExtractor(BaseFFTExtractor):
         sector_means = []
         sector_variances = []
 
-        for sector_idx in range(self.NUM_AZIMUTHAL_SECTORS):
+        for sector_idx in range(self.num_azimuthal_sectors):
             angle_start = -np.pi + sector_idx * sector_width
             angle_end = angle_start + sector_width
 
-            if sector_idx == self.NUM_AZIMUTHAL_SECTORS - 1:
+            if sector_idx == self.num_azimuthal_sectors - 1:
                 mask = (angles >= angle_start) | (angles < -np.pi + sector_width)
             else:
                 mask = (angles >= angle_start) & (angles < angle_end)
@@ -340,7 +342,7 @@ class NpFFTExtractor(BaseFFTExtractor):
         h, w = magnitude_spectrum.shape
 
         max_radius = self._compute_max_radius(center)
-        high_freq_threshold = max_radius * self.HIGH_FREQ_THRESHOLD_RATIO
+        high_freq_threshold = max_radius * self.high_freq_threshold_ratio
 
         #create mask for high frequencies
         outer_mask = create_radial_mask(center, (h, w), max_radius)
@@ -350,7 +352,7 @@ class NpFFTExtractor(BaseFFTExtractor):
         high_freq_energy = np.sum(magnitude_spectrum[high_freq_mask] ** 2)
         total_energy = np.sum(magnitude_spectrum ** 2)
 
-        return high_freq_energy / (total_energy + self.EPSILON)
+        return high_freq_energy / (total_energy + self.epsilon)
 
     def _extract_artifact_features(self,
         magnitude_spectrum: np.ndarray,
@@ -366,7 +368,7 @@ class NpFFTExtractor(BaseFFTExtractor):
         h, w = magnitude_spectrum.shape
 
         #Nyquist frequencies on edges of the spectrum can indicate checkerboard artifacts
-        edge = self.ARTIFACT_EDGE_WIDTH
+        edge = self.artifact_edge_width
         top_edge = np.mean(magnitude_spectrum[0:edge, :])
         bottom_edge = np.mean(magnitude_spectrum[-edge:, :])
         left_edge = np.mean(magnitude_spectrum[:, 0:edge])
@@ -375,7 +377,7 @@ class NpFFTExtractor(BaseFFTExtractor):
 
         #upsampling signatures (periodic peaks in spectrum)
         max_radius = self._compute_max_radius(center)
-        num_samples = self.ARTIFACT_NUM_RADIAL_SAMPLES
+        num_samples = self.artifact_num_radial_samples
         radii = np.linspace(0, max_radius, num_samples) 
         radial_profile_samples = []
 
@@ -399,9 +401,11 @@ class NpFFTExtractor(BaseFFTExtractor):
         vertical_asymmetry = np.abs(np.mean(top_half) - np.mean(bottom_half))
 
         #coherence of medium-high frequency region
-        region_size = self.ARTIFACT_CENTER_REGION_SIZE
-        high_freq_variance = np.var(magnitude_spectrum[center[0]-region_size:center[0]+region_size,
-                                                       center[1]-region_size:center[1]+region_size])
+        region_size = self.artifact_center_region_size
+        high_freq_variance = np.var(
+            magnitude_spectrum[center[0]-region_size:center[0]+region_size,
+            center[1]-region_size:center[1]+region_size]
+        )
 
         #spectral irregularity
         smoothed = self._smooth_spectrum(magnitude_spectrum)
@@ -418,7 +422,7 @@ class NpFFTExtractor(BaseFFTExtractor):
 
         return features
 
-    def _smooth_spectrum(self, spectrum: np.ndarray, kernel_size: int = None) -> np.ndarray:
+    def _smooth_spectrum(self, spectrum: np.ndarray, kernel_size: int) -> np.ndarray:
         """Smooth spectrum using simple averaging.
         Parameters:
             spectrum (np.ndarray): input spectrum
@@ -426,9 +430,6 @@ class NpFFTExtractor(BaseFFTExtractor):
         Returns:
             np.ndarray: smoothed spectrum
         """
-        if kernel_size is None:
-            kernel_size = self.DEFAULT_SMOOTHING_KERNEL_SIZE
-
         #smoothing box filter
         h, w = spectrum.shape
         pad = kernel_size // 2
@@ -452,22 +453,21 @@ class NpFFTExtractor(BaseFFTExtractor):
         """
         #band energies from radial features [means, variances, energies, peaks, profile]
         num_bands = self.num_radial_bands
-        energies = radial_features[num_bands * self.ENERGY_BAND_START_MULTIPLIER: num_bands * self.ENERGY_BAND_END_MULTIPLIER]
+        energies = radial_features[num_bands * self.energy_band_start_multiplier: num_bands * self.energy_band_end_multiplier]
 
         if len(energies) < 2:
             return np.zeros(5, dtype=np.float32)
 
         #energy ratios between consecutive bands
-        ratio_1_2 = energies[1] / (energies[0] + self.EPSILON)
-        ratio_2_3 = energies[2] / (energies[1] + self.EPSILON) if len(energies) > 2 else 0.0
-        ratio_low_high = energies[0] / (energies[-1] + self.EPSILON)
+        ratio_1_2 = energies[1] / (energies[0] + self.epsilon)
+        ratio_2_3 = energies[2] / (energies[1] + self.epsilon) if len(energies) > 2 else 0.0
+        ratio_low_high = energies[0] / (energies[-1] + self.epsilon)
 
-        energy_slope = (energies[-1] - energies[0]) / (len(energies) + self.EPSILON)
-
+        energy_slope = (energies[-1] - energies[0]) / (len(energies) + self.epsilon)
         #entropy-like measure of energy distribution
-        total_energy = np.sum(energies) + self.EPSILON
+        total_energy = np.sum(energies) + self.epsilon
         energy_dist = energies / total_energy
-        energy_concentration = -np.sum(energy_dist * np.log2(energy_dist + self.EPSILON))
+        energy_concentration = -np.sum(energy_dist * np.log2(energy_dist + self.epsilon))
 
         features = np.array([
             ratio_1_2,

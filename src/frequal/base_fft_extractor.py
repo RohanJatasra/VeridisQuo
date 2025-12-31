@@ -20,15 +20,15 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
         high_freq_emphasis: bool,
         feature_dim: int,
         logger_name: str,
-        num_azimuthal_sectors: int = 8,
-        high_freq_threshold_ratio: float = 0.5,
-        artifact_edge_width: int = 5,
-        artifact_num_radial_samples: int = 50,
-        artifact_center_region_size: int = 20,
-        default_smoothing_kernel_size: int = 5,
-        energy_band_start_multiplier: int = 2,
-        energy_band_end_multiplier: int = 3,
-        epsilon: float = 1e-10
+        num_azimuthal_sectors: int,
+        high_freq_threshold_ratio: float,
+        artifact_edge_width: int,
+        artifact_num_radial_samples: int,
+        artifact_center_region_size: int,
+        default_smoothing_kernel_size: int,
+        energy_band_start_multiplier: int,
+        energy_band_end_multiplier: int,
+        epsilon: float
     ):
         """Initialize BaseFFTExtractor.
         Parameters:
@@ -43,7 +43,6 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
             artifact_edge_width (int): width of edge regions for artifact detection
             artifact_num_radial_samples (int): number of radial samples for upsampling detection
             artifact_center_region_size (int): half-size of center region for variance analysis
-            default_smoothing_kernel_size (int): default kernel size for spectrum smoothing
             energy_band_start_multiplier (int): multiplier for energy band start index
             energy_band_end_multiplier (int): multiplier for energy band end index
             epsilon (float): small constant for numerical stability
@@ -73,7 +72,6 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
         """Window function type"""
         self.high_freq_emphasis: bool = high_freq_emphasis
         """Whether to emphasize high frequencies"""
-
         self.num_azimuthal_sectors: int = num_azimuthal_sectors
         """Number of angular sectors for directional analysis"""
         self.high_freq_threshold_ratio: float = high_freq_threshold_ratio
@@ -84,8 +82,6 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
         """Number of radial samples for upsampling detection"""
         self.artifact_center_region_size: int = artifact_center_region_size
         """Half-size of center region for variance analysis"""
-        self.default_smoothing_kernel_size: int = default_smoothing_kernel_size
-        """Default kernel size for spectrum smoothing"""
         self.energy_band_start_multiplier: int = energy_band_start_multiplier
         """Multiplier for energy band start index"""
         self.energy_band_end_multiplier: int = energy_band_end_multiplier
