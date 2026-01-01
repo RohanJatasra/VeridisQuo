@@ -1,6 +1,3 @@
-
-
-
 def get_device():
     import torch
     if torch.cuda.is_available():

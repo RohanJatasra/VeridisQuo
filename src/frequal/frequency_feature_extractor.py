@@ -22,6 +22,7 @@ class FrequencyFeatureExtractor(nn.Module):
         fft_feature_dim: int =512,
         fft_num_radial_bands: int =8,
         fft_window_function: str ="hann",
+        fft_high_freq_emphasis: bool =True,
         dct_feature_dim: int =512,
         dct_block_size: int =8,
         channel_mode: str ="luminance",
@@ -33,30 +34,44 @@ class FrequencyFeatureExtractor(nn.Module):
         fusion_use_batch_norm: bool =True,
         path_to_weights: Optional[str] =None,
         use_gpu_extractors: bool =True,
+        fft_num_azimuthal_sectors: int =8,
+        fft_high_freq_threshold_ratio: float =0.5,
+        fft_artifact_edge_width: int =5,
+        fft_artifact_num_radial_samples: int =50,
+        fft_artifact_center_region_size: int =20,
+        fft_default_smoothing_kernel_size: int =5,
+        fft_energy_band_start_multiplier: int =2,
+        fft_energy_band_end_multiplier: int =3,
+        fft_epsilon: float =1e-10,
+        dct_epsilon: float =1e-10,
     ):
         """Initialize FrequencyFeatureExtractor.
         Parameters:
             fft_feature_dim (int): FFT feature dimension
-            fft_num_radial_bands (int): number of concentric rings that divide the spectrum (default to JPEG-style)
+            fft_num_radial_bands (int): number of concentric rings that divide the spectrum
             fft_window_function (str): window function to apply to FFT
+            fft_high_freq_emphasis (bool): whether to emphasize high frequencies
             dct_feature_dim (int): DCT feature dimension
-            dct_block_size (int): DCT block size in pixels (batch)
+            dct_block_size (int): DCT block size in pixels
             channel_mode (str): image channel processing mode
-                - "luminance": use Y channel from YCbCr
-                - "grayscale": convert to grayscale
-                - "per_channel": process each RGB channel separately and concatenate
             dct_aggregation_method (str): DCT aggregation method
-                - "frequency_bands": divides frequency coefficients into bands
-                - "zigzag": top k coefficients (JPEG order)
-                - "statistical": stats per position
             dct_num_frequency_bands (int): number of frequency bands for DCT aggregation
-            fusion_output_dim (int, optional): output dimension after MLP fusion. If None, uses combined_dim (dct + fft)
-            fusion_hidden_dims (List[int], optional): hidden layer dimensions for fusion MLP. If None, uses [combined_dim, combined_dim // 2]
+            fusion_output_dim (int, optional): output dimension after MLP fusion
+            fusion_hidden_dims (List[int], optional): hidden layer dimensions for fusion MLP
             fusion_dropout_rate (float): dropout rate for fusion MLP
             fusion_use_batch_norm (bool): whether to use batch normalization in fusion MLP
             path_to_weights (str, optional): path to pretrained MLP weights
-            use_gpu_extractors (bool): whether to use GPU for DCT and FFT extraction. If False, uses NumPy-based
-                extractors on CPU, else if True, uses PyTorch-based extractors on GPU.
+            use_gpu_extractors (bool): whether to use GPU for extraction
+            fft_num_azimuthal_sectors (int): number of angular sectors for FFT
+            fft_high_freq_threshold_ratio (float): high frequency threshold ratio for FFT
+            fft_artifact_edge_width (int): edge width for FFT artifact detection
+            fft_artifact_num_radial_samples (int): radial samples for FFT artifact detection
+            fft_artifact_center_region_size (int): center region size for FFT analysis
+            fft_default_smoothing_kernel_size (int): smoothing kernel size for FFT
+            fft_energy_band_start_multiplier (int): energy band start multiplier for FFT
+            fft_energy_band_end_multiplier (int): energy band end multiplier for FFT
+            fft_epsilon (float): epsilon for FFT numerical stability
+            dct_epsilon (float): epsilon for DCT numerical stability
         Raises:
             ValueError: if parameters are invalid
             FileNotFoundError: if weights file doesn't exist
@@ -97,15 +112,25 @@ class FrequencyFeatureExtractor(nn.Module):
                 channel_mode=channel_mode,
                 aggregation_method=dct_aggregation_method,
                 num_frequency_bands=dct_num_frequency_bands,
-                feature_dim=dct_feature_dim
+                feature_dim=dct_feature_dim,
+                epsilon=dct_epsilon
             )
 
             self.fft_extractor = TorchFFTExtractor(
                 channel_mode=channel_mode,
                 num_radial_bands=fft_num_radial_bands,
                 window_function=fft_window_function,
-                high_freq_emphasis=True,
-                feature_dim=fft_feature_dim
+                high_freq_emphasis=fft_high_freq_emphasis,
+                feature_dim=fft_feature_dim,
+                num_azimuthal_sectors=fft_num_azimuthal_sectors,
+                high_freq_threshold_ratio=fft_high_freq_threshold_ratio,
+                artifact_edge_width=fft_artifact_edge_width,
+                artifact_num_radial_samples=fft_artifact_num_radial_samples,
+                artifact_center_region_size=fft_artifact_center_region_size,
+                default_smoothing_kernel_size=fft_default_smoothing_kernel_size,
+                energy_band_start_multiplier=fft_energy_band_start_multiplier,
+                energy_band_end_multiplier=fft_energy_band_end_multiplier,
+                epsilon=fft_epsilon
             )
         else:
             self.dct_extractor = NpDCTExtractor(
@@ -113,15 +138,25 @@ class FrequencyFeatureExtractor(nn.Module):
                 channel_mode=channel_mode,
                 aggregation_method=dct_aggregation_method,
                 num_frequency_bands=dct_num_frequency_bands,
-                feature_dim=dct_feature_dim
+                feature_dim=dct_feature_dim,
+                epsilon=dct_epsilon
             )
 
             self.fft_extractor = NpFFTExtractor(
                 channel_mode=channel_mode,
                 num_radial_bands=fft_num_radial_bands,
                 window_function=fft_window_function,
-                high_freq_emphasis=True,
-                feature_dim=fft_feature_dim
+                high_freq_emphasis=fft_high_freq_emphasis,
+                feature_dim=fft_feature_dim,
+                num_azimuthal_sectors=fft_num_azimuthal_sectors,
+                high_freq_threshold_ratio=fft_high_freq_threshold_ratio,
+                artifact_edge_width=fft_artifact_edge_width,
+                artifact_num_radial_samples=fft_artifact_num_radial_samples,
+                artifact_center_region_size=fft_artifact_center_region_size,
+                default_smoothing_kernel_size=fft_default_smoothing_kernel_size,
+                energy_band_start_multiplier=fft_energy_band_start_multiplier,
+                energy_band_end_multiplier=fft_energy_band_end_multiplier,
+                epsilon=fft_epsilon
             )
 
         self.fusion_mlp: FusionMLP = FusionMLP(

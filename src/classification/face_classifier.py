@@ -37,7 +37,7 @@ class FaceClassifier(nn.Module):
         """
         super(FaceClassifier, self).__init__()
 
-        self.logger: logging.Logger = logging.getLogger("classification.FaceClassifier")
+        self.logger: logging.Logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
         """Logger instance for the FaceClassifier class"""
 
         try:
@@ -142,19 +142,19 @@ class FaceClassifier(nn.Module):
             assert x.shape[1] == self.input_dim, f"Expected input dimension {self.input_dim}, got {x.shape[1]}"
 
         except AssertionError as e:
-            self.logger.error(f"- forward - {e}")
+            self.logger.error(e)
             raise ValueError(f"Invalid input shape: {e}")
 
         logits = self.classifier(x)
-        self.logger.debug(f"- forward - Input shape {x.shape} -> Output logits shape {logits.shape}")
+        self.logger.debug(f"Input shape {x.shape} -> Output logits shape {logits.shape}")
         
         return logits
-
-    def predict_proba(self, x: torch.Tensor) -> torch.Tensor:
-        """Predict class probabilities using softmax.
+    
+    def predict_proba(self, logits: torch.Tensor) -> torch.Tensor:
+        """Predicts class probabilities using softmax, from forward returned logits.
         Parameters:
-            x (torch.Tensor): Input feature
-                - Shape: [batch, input_dim]
+            logits (torch.Tensor): Input logits
+                - Shape: [batch, num_classes]
         Returns:
             torch.Tensor: Class probabilities
                 - Shape: [batch, num_classes]
@@ -162,19 +162,15 @@ class FaceClassifier(nn.Module):
         Raises:
             ValueError: if input shape is invalid
         """
-        logits = self.forward(x)
         probabilities = torch.softmax(logits, dim=1)
-
-        self.logger.debug(f"- predict_proba - Computed probabilities with shape {probabilities.shape}")
-
+        self.logger.debug(f"Computed probabilities with shape {probabilities.shape}")
         return probabilities
-    
 
-    def predict(self, x: torch.Tensor) -> torch.Tensor:
-        """Predict class labels (argmax).
+    def predict(self, logits: torch.Tensor) -> torch.Tensor:
+        """Predict class labels (argmax) from forward returned logits.
         Parameters:
-            x (torch.Tensor): Input feature
-                - Shape: [batch, input_dim]
+            logits (torch.Tensor): Input logits
+                - Shape: [batch, num_classes]
         Returns:
             torch.Tensor: Predicted class indices
                 - Shape: [batch]
@@ -182,11 +178,8 @@ class FaceClassifier(nn.Module):
         Raises:
             ValueError: if input shape is invalid
         """
-        logits = self.forward(x)
         predictions = torch.argmax(logits, dim=1)
-
-        self.logger.debug(f"- predict - Predicted classes with shape {predictions.shape}")
-
+        self.logger.debug(f"Predicted classes with shape {predictions.shape}")
         return predictions
 
     def save_weights(self, output_path: str) -> None:
@@ -202,10 +195,10 @@ class FaceClassifier(nn.Module):
             path_obj.parent.mkdir(parents=True, exist_ok=True)
 
             torch.save(self.state_dict(), path_obj)
-            self.logger.info(f"- save_weights - Saved weights to {path_obj}")
+            self.logger.info(f"Saved weights to {path_obj}")
 
         except Exception as e:
-            self.logger.error(f"- save_weights - Error saving weights: {e}")
+            self.logger.error(f"Error saving weights: {e}")
             raise RuntimeError(f"Error saving weights: {e}")
 
     def load_weights(self, input_path: str) -> None:
@@ -221,14 +214,14 @@ class FaceClassifier(nn.Module):
             assert path.exists(), f"Weights file does not exist: {input_path}"
 
         except AssertionError as e:
-            self.logger.error(f"- load_weights - {e}")
+            self.logger.error(f"Invalid parameter: {e}")
             raise ValueError(f"Invalid parameter: {e}")
 
         try:
             state_dict = torch.load(path, map_location='cpu')
             self.load_state_dict(state_dict)
-            self.logger.info(f"- load_weights - Loaded weights from {path}")
+            self.logger.info(f"Loaded weights from {path}")
 
         except Exception as e:
-            self.logger.error(f"- load_weights - Error loading weights: {e}")
+            self.logger.error(f"Error loading weights: {e}")
             raise RuntimeError(f"Error loading weights: {e}")

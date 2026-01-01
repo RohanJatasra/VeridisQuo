@@ -15,7 +15,16 @@ class NpFFTExtractor(BaseFFTExtractor):
         num_radial_bands: int,
         window_function: str,
         high_freq_emphasis: bool,
-        feature_dim: int
+        feature_dim: int,
+        num_azimuthal_sectors: int = 8,
+        high_freq_threshold_ratio: float = 0.5,
+        artifact_edge_width: int = 5,
+        artifact_num_radial_samples: int = 50,
+        artifact_center_region_size: int = 20,
+        default_smoothing_kernel_size: int = 5,
+        energy_band_start_multiplier: int = 2,
+        energy_band_end_multiplier: int = 3,
+        epsilon: float = 1e-10
     ):
         """Initialize NpFFTExtractor.
         Parameters:
@@ -24,6 +33,15 @@ class NpFFTExtractor(BaseFFTExtractor):
             window_function (str): windowing function to reduce spectral leakage
             high_freq_emphasis (bool): emphasize high frequencies where deepfakes often have anomalies
             feature_dim (int): target output feature dimension
+            num_azimuthal_sectors (int): number of angular sectors for directional analysis
+            high_freq_threshold_ratio (float): ratio defining high-frequency region
+            artifact_edge_width (int): width of edge regions for artifact detection
+            artifact_num_radial_samples (int): number of radial samples for upsampling detection
+            artifact_center_region_size (int): half-size of center region for variance analysis
+            default_smoothing_kernel_size (int): default kernel size for spectrum smoothing
+            energy_band_start_multiplier (int): multiplier for energy band start index
+            energy_band_end_multiplier (int): multiplier for energy band end index
+            epsilon (float): small constant for numerical stability
         Raises:
             ValueError: if parameters are invalid
         """
@@ -33,7 +51,16 @@ class NpFFTExtractor(BaseFFTExtractor):
             window_function=window_function,
             high_freq_emphasis=high_freq_emphasis,
             feature_dim=feature_dim,
-            logger_name="frequal.FFTExtractor"
+            logger_name=("/".join(__file__.split("/")[-2:])),
+            num_azimuthal_sectors=num_azimuthal_sectors,
+            high_freq_threshold_ratio=high_freq_threshold_ratio,
+            artifact_edge_width=artifact_edge_width,
+            artifact_num_radial_samples=artifact_num_radial_samples,
+            artifact_center_region_size=artifact_center_region_size,
+            default_smoothing_kernel_size=default_smoothing_kernel_size,
+            energy_band_start_multiplier=energy_band_start_multiplier,
+            energy_band_end_multiplier=energy_band_end_multiplier,
+            epsilon=epsilon
         )
 
         self.logger.info("FFTExtractor initialized successfully.")
