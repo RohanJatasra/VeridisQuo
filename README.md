@@ -218,23 +218,23 @@ We extracted the frames and faces from these videos to create our dataset:
 </table>
 
 
-## Prerequisites
-
-Install [uv](https://docs.astral.sh/uv/):
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# OR
-pip install uv
-```
 
 ## Launch
 
+### API Service
+
 ```bash
-./scripts/dev.sh
-# OR
-uv sync
-uv run python src/main.py
+chmod +x ./scripts/launch_api.sh
+./scripts/launch_api.sh
 ```
+
+### Frontend Service
+
+```bash
+chmod +x ./scripts/launch_frontend.sh
+./scripts/launch_frontend.sh
+```
+
 
 
 
