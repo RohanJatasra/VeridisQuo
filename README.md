@@ -1,47 +1,102 @@
 # Veridis Quo
-**Where is the truth?** At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake. 
-Veridis Quo is a neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame.
 
-TODO...
+<table>
+<tr>
+<td width="60%" >
+    
+### *Where is the truth?*
+    
+#### **What is Veridis Quo?**
 
-## Param
-```bash
-Total params: 40,798,098
-Trainable params: 40,798,098
-Non-trainable params: 0
-----------------------------------------------------------------
-Input size (MB): 0.57
-Forward/backward pass size (MB): 300.57
-Params size (MB): 155.63
-Estimated Total Size (MB): 456.78
+A state-of-the-art neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame using explainable AI.
+
+---
+
+#### **The Era of Video Manipulation**
+
+At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake.
+
+
+</td>
+<td width="40%" valign="middle" align="center">
+
+<img src="./assets/logo/VeridisQuo.png" alt="VeridisQuo Logo" width="100%">
+
+</td>
+</tr>
+</table>
+
+
+# Pipeline
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#1a1a2e', 'primaryTextColor': '#fff', 'lineColor': '#ffffff', 'background': '#0d1117', 'mainBkg': '#0d1117'}}}%%
+
+flowchart TB
+    subgraph Preprocess[" Preprocess "]
+        A[MP4 Video] --> B[Frames extraction]
+        B --> C[Faces detection]
+        C --> D[Faces extraction]
+    end
+
+    D --> E
+    D --> G
+    D --> H
+
+    subgraph Processing[" "]
+        direction LR
+        subgraph Spatial_Module[" Spatial Module "]
+            E[Features ExtractionEfficientNet] -->|"1792, 7, 7"| F((Pooled))
+        end
+
+        subgraph Frequency_Module[" Frequency Module "]
+            G[DCT Extractor8×8, freq_bands] -->|"512"| I((Concat))
+            H[FFT Extractorradial=8, hann] -->|"512"| I
+            I -->|"1024"| J[FusionMLP1024→512→1024]
+        end
+    end
+
+    F -->|"1792"| K
+    J -->|"1024"| K
+
+    subgraph Classifier_Module[" Classifier Module "]
+        K((Concat)) -->|"2816"| L[MLP]
+        L --> M[Frames Aggregation]
+        M --> N[Final Score]
+    end
+
+    E --> O
+    D --> Q
+
+    subgraph Gradcam_Module[" Gradcam Module "]
+        O[Gradcam Computation] --> P[Gradcam Visualization]
+        P --> Q((Remap))
+        Q --> R[Final Manipulated Video]
+    end
+
+    %% Styling
+    classDef preprocess fill:#1a1a2e,stroke:#f59e0b,color:#f59e0b
+    classDef spatial fill:#1a1a2e,stroke:#10b981,color:#10b981
+    classDef frequency fill:#1a1a2e,stroke:#3b82f6,color:#3b82f6
+    classDef classifier fill:#1a1a2e,stroke:#ec4899,color:#ec4899
+    classDef gradcam fill:#1a1a2e,stroke:#a855f7,color:#a855f7
+    classDef default fill:#1a1a2e,stroke:#6b7280,color:#fff
+
+    class B,C,D preprocess
+    class E,F spatial
+    class G,H,I,J frequency
+    class K,L,M,N classifier
+    class O,P,Q,R gradcam
+
+    style Preprocess fill:#0d1117,stroke:#f59e0b,color:#f59e0b
+    style Spatial_Module fill:#0d1117,stroke:#10b981,color:#10b981
+    style Frequency_Module fill:#0d1117,stroke:#3b82f6,color:#3b82f6
+    style Classifier_Module fill:#0d1117,stroke:#ec4899,color:#ec4899
+    style Gradcam_Module fill:#0d1117,stroke:#a855f7,color:#a855f7
+    style Processing fill:transparent,stroke:none
 ```
 
-## Prerequisites
-
-Install [uv](https://docs.astral.sh/uv/):
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# OR
-pip install uv
-```
-
-## Launch
-
-```bash
-./scripts/dev.sh
-# OR
-uv sync
-uv run python src/main.py
-```
-
-## Tests
-
-```bash
-./scripts/run_tests.sh
-# OR
-uv sync --extra dev
-uv run pytest tests/ -v
-```
+---
 
 
 
@@ -163,51 +218,23 @@ We extracted the frames and faces from these videos to create our dataset:
 </table>
 
 
-## Project Structure
-```
-veridisquo/
-├── scripts/                   # Helper scripts
-│   ├── dev.sh                 # Development environment setup script
-│   └── run_tests.sh           # Unit tests execution script
-├── src/                       # Source code
-│   ├── preprocessing/         # Data preprocessing module
-│   ├── spatial/               # Spatial feature extraction module
-│   ├── data/                  # Dataset loaders module
-│   ├── frequal/               # Frequency feature extraction module
-│   └── main.py                # Main script
-├── tests/                     # Unit tests
-│   ├── preprocessing/         # Tests for data preprocessing
-│   ├── spatial/               # Tests for spatial feature extraction
-│   └── frequal/               # Tests for frequency feature extraction
-├── README.md                  # Project documentation
-└── pyproject.toml             # Project configuration
+## Prerequisites
+
+Install [uv](https://docs.astral.sh/uv/):
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# OR
+pip install uv
 ```
 
-### Frequency Analysis Module Structure
+## Launch
+
+```bash
+./scripts/dev.sh
+# OR
+uv sync
+uv run python src/main.py
 ```
-  BaseFrequencyExtractor (ABC)
-  │   ├── extract() [template method]
-  │   ├── _preprocess_image() [abstract]
-  │   ├── _apply_transform() [abstract]
-  │   └── _extract_features() [abstract]
-  ├── BaseFFTExtractor(BaseFrequencyExtractor) (ABC)
-  │   │   ├── Constantes FFT
-  │   │   ├── _apply_transform() → call _apply_fft()
-  │   │   ├── _extract_features() → call _extract_frequency_features()
-  │   │   ├── _apply_fft() [abstract]
-  │   │   └── _extract_frequency_features() [abstract]
-  │   ├── NpFFTExtractor(BaseFFTExtractor)
-  │   │   └── NumPy implementations
-  │   └── TorchFFTExtractor(nn.Module, BaseFFTExtractor)
-  │       └── PyTorch implementations
-  └── BaseDCTExtractor(BaseFrequencyExtractor) (ABC)
-      │   ├── Constantes DCT (AVAILABLE_AGGREGATION_METHODS, DEFAULT_BLOCK_SIZE, etc.)
-      │   ├── _apply_transform() → call _extract_dct_blocks()
-      │   ├── _extract_features() → call _aggregate_block_features()
-      │   ├── _extract_dct_blocks() [abstract]
-      │   └── _aggregate_block_features() [abstract]
-      ├── NpDCTExtractor(BaseDCTExtractor)
-      │   └── NumPy implementations + 3 aggregation methods
-      └── TorchDCTExtractor(BaseDCTExtractor)
-          └── PyTorch implementations
-```
+
+
+
