@@ -228,12 +228,29 @@ chmod +x ./scripts/launch_api.sh
 ./scripts/launch_api.sh
 ```
 
+**FastAPI server** running on `http://localhost:8000`
+
+| Endpoint | Description |
+|:---------|:------------|
+| `/docs` | Interactive API documentation (Swagger) |
+| `/api/v1/health` | Health check and model status |
+| `/api/v1/analyze` | Video deepfake detection endpoint |
+
+**Custom launch options**:
+```bash
+uv run python src/launch.py --port 8080 --reload --debug
+```
+
 ### Frontend Service
 
 ```bash
 chmod +x ./scripts/launch_frontend.sh
 ./scripts/launch_frontend.sh
 ```
+
+**React + Vite** development server on `http://localhost:3000`
+
+API requests automatically proxied to backend via Vite ([vite.config.ts:10](frontend/vite.config.ts#L10))
 
 
 
