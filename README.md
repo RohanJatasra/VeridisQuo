@@ -12,9 +12,9 @@ A state-of-the-art neural network designed to **detect deepfake videos** and **h
 
 ---
 
-#### **The Era of Video Manipulation**
+#### **How does it work?**
 
-At a time when video is gradually ceasing to be viable evidence, with the constant progress of tools for manipulating this media, we feel the need to seek new ways of discerning reality from fake.
+VeridisQuo uses a **hybrid architecture** combining spatial and frequency-domain analysis. **EfficientNet-B4** extracts spatial features from faces, while **frequency analysis** captures artifacts invisible to the human eye. These streams merge into a unified classifier, achieving robust detection across multiple deepfake techniques.
 
 
 </td>
