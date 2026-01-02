@@ -382,9 +382,6 @@ If you use VeridisQuo in your research, please cite:
 }
 ```
 
-### Model Reference
-Pre-trained model: [Gazeux33/VeridisQuo](https://huggingface.co/Gazeux33/VeridisQuo) (40M parameters)
-
 
 
 
