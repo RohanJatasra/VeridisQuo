@@ -104,22 +104,53 @@ flowchart TB
 ## Model Architecture
 
 ### Hybrid Detection System
-- **Spatial Stream**: EfficientNet-B4 (pretrained ImageNet) → 1792-dim features
-- **Frequency Stream**:
-  - FFT Extractor (8 radial bands, Hann window) → 512-dim
-  - DCT Extractor (8×8 blocks, frequency bands) → 512-dim
-  - Fusion MLP → 1024-dim combined features
-- **Classifier**: MLP (2816 → [1024, 512, 256] → 2 classes)
+```mermaid
+graph LR
+    Input["Input Image<br/>224×224×3"] --> Spatial["<b>Spatial Stream</b><br/>EfficientNet-B4<br/>(ImageNet)"]
+    Input --> Frequency["<b>Frequency Stream</b>"]
+
+    Frequency --> FFT["FFT Extractor<br/>8 radial bands<br/>Hann window"]
+    Frequency --> DCT["DCT Extractor<br/>8×8 blocks<br/>frequency bands"]
+
+    FFT --> FFT_Out["512-dim"]
+    DCT --> DCT_Out["512-dim"]
+
+    FFT_Out --> Fusion["Fusion MLP"]
+    DCT_Out --> Fusion
+
+    Spatial --> Spatial_Out["1792-dim"]
+    Fusion --> Fusion_Out["1024-dim"]
+
+    Spatial_Out --> Concat["Concatenate<br/>2816-dim"]
+    Fusion_Out --> Concat
+
+    Concat --> Classifier["<b>Classifier MLP</b><br/>1024 → 512 → 256"]
+    Classifier --> Output["Output<br/>FAKE/REAL<br/>+ confidence"]
+
+    style Input fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff
+    style Spatial fill:#0f172a,stroke:#10b981,stroke-width:2px,color:#10b981
+    style Frequency fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#3b82f6
+    style FFT fill:#0d1117,stroke:#06b6d4,color:#06b6d4
+    style DCT fill:#0d1117,stroke:#06b6d4,color:#06b6d4
+    style Fusion fill:#0d1117,stroke:#3b82f6,color:#3b82f6
+    style Classifier fill:#0f172a,stroke:#ec4899,stroke-width:2px,color:#ec4899
+    style Output fill:#1e293b,stroke:#a855f7,stroke-width:2px,color:#fff
+    style Concat fill:#0d1117,stroke:#8b5cf6,color:#8b5cf6
+    style FFT_Out fill:#0d1117,stroke:#64748b,color:#64748b
+    style DCT_Out fill:#0d1117,stroke:#64748b,color:#64748b
+    style Spatial_Out fill:#0d1117,stroke:#64748b,color:#64748b
+    style Fusion_Out fill:#0d1117,stroke:#64748b,color:#64748b
+```
 
 ### Model Specifications
 | Specification | Value |
 |:--------------|:------|
-| **Total Parameters** | 25M |
+| **Total Parameters** | 25.05M params |
 | **Input Size** | 224×224 RGB |
 | **Output** | Binary (FAKE/REAL) + confidence |
-| **Backbone** | EfficientNet-B4 |
-| **Frequency Module** | 3M params |
-| **Classifier** | 2M params |
+| **Backbone** | EfficientNet-B4 (19.34M params) |
+| **Frequency Module** | 2.16M params |
+| **Classifier** | 3.54M params |
 
 
 
@@ -306,45 +337,39 @@ curl -X POST http://localhost:8000/api/v1/analyze \
 - Node.js 18+ and npm (optional, for frontend)
 - CUDA 11.8+ (optional, for GPU acceleration)
 
-### Installation
+### Clone project
 
-**Backend**:
 ```bash
 # Clone repository
 git clone https://github.com/VeridisQuo-orga/VeridisQuo.git
 cd VeridisQuo
+```
 
-# Launch API
+### Launch backend
+
+```bash
 chmod +x ./scripts/launch_api.sh
 ./scripts/launch_api.sh
 
-# Models auto-download from HuggingFace on first run
-
 ```
-Server runs on `http://localhost:8000` | Docs at `/docs`
 
-**Frontend**:
+server runs on `http://localhost:8000` | Docs at `/docs`
+
+### Launch frontend
+
 ```bash
 chmod +x ./scripts/launch_frontend.sh
 ./scripts/launch_frontend.sh
 ```
 Development server on `http://localhost:3000`
 
+<p align="center">
 <img src="./assets/results/frontend.png" alt="frontend" width="520">
-
-
-API requests automatically proxied to backend via Vite ([vite.config.ts:10](frontend/vite.config.ts#L10))
-
-
-
+<p/>
 
 ---
 
-## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
 
 ## Citation
 
