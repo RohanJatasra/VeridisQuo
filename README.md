@@ -325,37 +325,12 @@ Server runs on `http://localhost:8000` | Docs at `/docs`
 
 **Frontend**:
 ```bash
-cd frontend
-npm install
-```
-
-### Basic Usage
-
-**CLI Inference** (single video):
-```bash
-uv run python src/main.py \
-  --config inference_config.yml \
-  --mode inference \
-  --input path/to/video.mp4
-```
-
-**Frontend Service**:
-```bash
 chmod +x ./scripts/launch_frontend.sh
 ./scripts/launch_frontend.sh
 ```
 Development server on `http://localhost:3000`
 
 API requests automatically proxied to backend via Vite ([vite.config.ts:10](frontend/vite.config.ts#L10))
-
-
-
-
-
-
-
-
-
 
 
 
