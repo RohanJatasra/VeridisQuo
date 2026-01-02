@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Shield, Cpu } from 'lucide-react';
+import { Cpu } from 'lucide-react';
 import type { HealthResponse } from '../types/api';
 
 interface HeaderProps {
@@ -14,7 +14,7 @@ export const Header = ({ health }: HeaderProps) => {
       animate={{ opacity: 1, y: 0 }}
     >
       <div className="logo">
-        <Shield size={40} className="logo-icon" />
+        <img src="/veridisquo_nobg.png" alt="VeridisQuo" className="logo-icon" />
         <div className="logo-text">
           <h1>VeridisQuo</h1>
           <span>AI-Powered Deepfake Detection</span>

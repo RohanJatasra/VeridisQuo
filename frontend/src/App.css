@@ -83,6 +83,12 @@ body {
   color: var(--accent-primary);
 }
 
+.logo-icon[src] {
+  height: 80px;
+  width: auto;
+  object-fit: contain;
+}
+
 .logo-text h1 {
   font-size: 1.5rem;
   font-weight: 700;
