@@ -330,6 +330,9 @@ chmod +x ./scripts/launch_frontend.sh
 ```
 Development server on `http://localhost:3000`
 
+<img src="./assets/results/frontend.png" alt="frontend" width="520">
+
+
 API requests automatically proxied to backend via Vite ([vite.config.ts:10](frontend/vite.config.ts#L10))
 
 
