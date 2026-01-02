@@ -181,12 +181,7 @@ The dataset was built using the following pipeline:
 4. **Dataset Split**: Stratified 70/15/15 split
 5. **Class Balancing**: Oversample minority class
 
-**Build scripts**:
-```bash
-./scripts/download_raw_data.sh          # Download FaceForensics++ videos
-./scripts/download_preprocessed_data.sh # Download preprocessed faces
-./scripts/build_dataset.sh              # Build from raw videos
-```
+
 
 </td>
 <td width="50%" valign="top">
