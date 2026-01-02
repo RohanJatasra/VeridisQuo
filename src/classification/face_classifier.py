@@ -150,11 +150,12 @@ class FaceClassifier(nn.Module):
         
         return logits
     
-    def predict_proba(self, logits: torch.Tensor) -> torch.Tensor:
-        """Predicts class probabilities using softmax, from forward returned logits.
+    def predict_proba(self, x: torch.Tensor) -> torch.Tensor:
+        """Predicts class probabilities using softmax.
         Parameters:
-            logits (torch.Tensor): Input logits
-                - Shape: [batch, num_classes]
+            x (torch.Tensor): Input features or logits
+                - If shape is [batch, input_dim]: will call forward() first
+                - If shape is [batch, num_classes]: treats as logits directly
         Returns:
             torch.Tensor: Class probabilities
                 - Shape: [batch, num_classes]
@@ -162,15 +163,22 @@ class FaceClassifier(nn.Module):
         Raises:
             ValueError: if input shape is invalid
         """
+        # If input has input_dim features, run forward pass first
+        if x.shape[1] == self.input_dim:
+            logits = self.forward(x)
+        else:
+            logits = x
+
         probabilities = torch.softmax(logits, dim=1)
         self.logger.debug(f"Computed probabilities with shape {probabilities.shape}")
         return probabilities
 
-    def predict(self, logits: torch.Tensor) -> torch.Tensor:
-        """Predict class labels (argmax) from forward returned logits.
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
+        """Predict class labels (argmax).
         Parameters:
-            logits (torch.Tensor): Input logits
-                - Shape: [batch, num_classes]
+            x (torch.Tensor): Input features or logits
+                - If shape is [batch, input_dim]: will call forward() first
+                - If shape is [batch, num_classes]: treats as logits directly
         Returns:
             torch.Tensor: Predicted class indices
                 - Shape: [batch]
@@ -178,6 +186,12 @@ class FaceClassifier(nn.Module):
         Raises:
             ValueError: if input shape is invalid
         """
+        # If input has input_dim features, run forward pass first
+        if x.shape[1] == self.input_dim:
+            logits = self.forward(x)
+        else:
+            logits = x
+
         predictions = torch.argmax(logits, dim=1)
         self.logger.debug(f"Predicted classes with shape {predictions.shape}")
         return predictions
