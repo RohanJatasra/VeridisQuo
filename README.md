@@ -1,4 +1,6 @@
-# Veridis Quo
+# VeridisQuo
+
+
 
 <table>
 <tr>
@@ -11,17 +13,18 @@
 A state-of-the-art neural network designed to **detect deepfake videos** and **highlight the altered areas** in each frame using explainable AI.
 
 ---
-
 #### **How does it work?**
-
 VeridisQuo uses a **hybrid architecture** combining spatial and frequency-domain analysis. **EfficientNet-B4** extracts spatial features from faces, while **frequency analysis** captures artifacts invisible to the human eye. These streams merge into a unified classifier, achieving robust detection across multiple deepfake techniques.
-
-
 </td>
 <td width="40%" valign="middle" align="center">
-
 <img src="./assets/logo/VeridisQuo.png" alt="VeridisQuo Logo" width="100%">
+</td>
+</tr>
+<tr>
+<td colspan="2" align="center">
 
+### **Result**
+<img src="https://github.com/user-attachments/assets/251d23d4-a466-4207-8c00-18af5e2769fc" alt="Démonstration VeridisQuo" width="720">
 </td>
 </tr>
 </table>
@@ -111,19 +114,14 @@ flowchart TB
 ### Model Specifications
 | Specification | Value |
 |:--------------|:------|
-| **Total Parameters** | 40M |
+| **Total Parameters** | 25M |
 | **Input Size** | 224×224 RGB |
 | **Output** | Binary (FAKE/REAL) + confidence |
-| **Backbone** | EfficientNet-B4 (19M params) |
-| **Frequency Module** | 15M params |
-| **Classifier** | 6M params |
+| **Backbone** | EfficientNet-B4 |
+| **Frequency Module** | 3M params |
+| **Classifier** | 2M params |
 
-### Score Aggregation Methods
-- `majority`: Vote majoritaire sur frames
-- `average`: Moyenne des probabilités
-- `weighted_average`: Moyenne pondérée par confidence
-- `max_confidence`: Frame avec confidence max
-- `threshold`: Compte frames > seuil
+
 
 ---
 
@@ -255,14 +253,8 @@ The dataset was built using the following pipeline:
 <br>
 <img src="./assets/training/val_loss.png" alt="Validation Loss" width="400">-->
 
-### Final Metrics
-| Metric | Value |
-|:-------|:------|
-| **Test Accuracy** | 94.2% |
-| **F1-Score** | 0.941 |
-| **Training Time** | ~4 hours (RTX 3090) |
 
-Model available on [HuggingFace](https://huggingface.co/Gazeux33/VeridisQuo/tree/main)
+
 
 </td>
 </tr>
@@ -309,52 +301,14 @@ curl -X POST http://localhost:8000/api/v1/analyze \
 
 ---
 
-## Configuration
 
-VeridisQuo uses three configuration files:
-
-### config.json
-Production configuration with full architecture parameters.
-- Model paths (HuggingFace auto-download)
-- Device settings (auto/cpu/cuda)
-- Architecture hyperparameters
-- Preprocessing settings
-
-### inference_config.yml
-Inference-specific settings.
-```yaml
-frame_extraction:
-  frames_per_second: 1
-  use_optimized: true  # PyAV GPU extractor
-batch_processing:
-  default_batch_size: 32
-score_aggregation:
-  aggregation_method: majority
-gradcam:
-  enabled: false
-```
-
-### training_config.yml
-Training hyperparameters.
-```yaml
-training:
-  batch_size: 64
-  num_epochs: 25
-  optimizer: AdamW
-  learning_rate: 1e-4
-scheduler:
-  type: cosine_with_warmup
-  warmup_epochs: 3
-```
-
----
 
 ## Quick Start
 
 ### Prerequisites
 - Python 3.12 or 3.13
 - [uv](https://docs.astral.sh/uv/) package manager
-- Node.js 18+ and npm (for frontend)
+- Node.js 18+ and npm (optional, for frontend)
 - CUDA 11.8+ (optional, for GPU acceleration)
 
 ### Installation
@@ -365,11 +319,14 @@ scheduler:
 git clone https://github.com/VeridisQuo-orga/VeridisQuo.git
 cd VeridisQuo
 
-# Install dependencies
-uv sync --extra dev --extra api
+# Launch API
+chmod +x ./scripts/launch_api.sh
+./scripts/launch_api.sh
 
 # Models auto-download from HuggingFace on first run
+
 ```
+Server runs on `http://localhost:8000` | Docs at `/docs`
 
 **Frontend**:
 ```bash
@@ -387,18 +344,6 @@ uv run python src/main.py \
   --input path/to/video.mp4
 ```
 
-**API Service**:
-```bash
-chmod +x ./scripts/launch_api.sh
-./scripts/launch_api.sh
-```
-Server runs on `http://localhost:8000` | Docs at `/docs`
-
-**Custom launch**:
-```bash
-uv run python src/launch.py --port 8080 --reload --debug
-```
-
 **Frontend Service**:
 ```bash
 chmod +x ./scripts/launch_frontend.sh
@@ -408,72 +353,17 @@ Development server on `http://localhost:3000`
 
 API requests automatically proxied to backend via Vite ([vite.config.ts:10](frontend/vite.config.ts#L10))
 
----
 
-## Usage
 
-### CLI Interface
 
-VeridisQuo supports three execution modes via [src/main.py](src/main.py):
 
-**Inference Mode**:
-```bash
-# Single file
-uv run python src/main.py --config inference_config.yml --mode inference --input video.mp4
 
-# Directory batch processing
-uv run python src/main.py --config inference_config.yml --mode inference --input videos/
-```
 
-**Training Mode**:
-```bash
-uv run python src/main.py --config training_config.yml --mode train
-```
 
-**Dataset Building Mode**:
-```bash
-uv run python src/main.py --config config.json --mode build_dataset
-```
 
-### API Usage
 
-See [API Reference](#api-reference) section above.
 
-### Frontend Usage
 
-The React frontend provides:
-- Drag-and-drop video upload
-- Real-time analysis progress tracking
-- Configurable FPS, aggregation method, GradCAM generation
-- Results display with authenticity score
-- GradCAM video player
-
----
-
-## Testing
-
-### Test Suite
-- 15+ test modules covering all components
-- Location: `tests/` directory
-- Coverage: spatial, frequency, classification, preprocessing, inference
-
-### Run Tests
-```bash
-chmod +x ./scripts/run_tests.sh
-./scripts/run_tests.sh
-```
-
-Or manually:
-```bash
-uv sync --extra dev
-uv run pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
-```
-
-### CI/CD
-GitHub Actions workflow runs tests on every push/PR to main branch.
-- Python 3.13 on Ubuntu
-- Full test suite with coverage reporting
-- Configuration: [.github/workflows/tests.yml](.github/workflows/tests.yml)
 
 ---
 
@@ -490,7 +380,7 @@ If you use VeridisQuo in your research, please cite:
 ```bibtex
 @software{veridisquo2025,
   title = {VeridisQuo: Hybrid Deepfake Detection with Explainable AI},
-  author = {Barriere, Clement and Castillo, Theo},
+  author = {Castillo, Theo and Barriere, Clement},
   year = {2025},
   url = {https://github.com/VeridisQuo-orga/VeridisQuo},
   note = {Model: \url{https://huggingface.co/Gazeux33/VeridisQuo}}
