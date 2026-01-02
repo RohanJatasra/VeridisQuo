@@ -98,7 +98,34 @@ flowchart TB
 
 ---
 
+## Model Architecture
 
+### Hybrid Detection System
+- **Spatial Stream**: EfficientNet-B4 (pretrained ImageNet) → 1792-dim features
+- **Frequency Stream**:
+  - FFT Extractor (8 radial bands, Hann window) → 512-dim
+  - DCT Extractor (8×8 blocks, frequency bands) → 512-dim
+  - Fusion MLP → 1024-dim combined features
+- **Classifier**: MLP (2816 → [1024, 512, 256] → 2 classes)
+
+### Model Specifications
+| Specification | Value |
+|:--------------|:------|
+| **Total Parameters** | 40M |
+| **Input Size** | 224×224 RGB |
+| **Output** | Binary (FAKE/REAL) + confidence |
+| **Backbone** | EfficientNet-B4 (19M params) |
+| **Frequency Module** | 15M params |
+| **Classifier** | 6M params |
+
+### Score Aggregation Methods
+- `majority`: Vote majoritaire sur frames
+- `average`: Moyenne des probabilités
+- `weighted_average`: Moyenne pondérée par confidence
+- `max_confidence`: Frame avec confidence max
+- `threshold`: Compte frames > seuil
+
+---
 
 
 
@@ -145,8 +172,23 @@ Containing **7000 videos** with numerous deepfake techniques:
   <img src="https://img.shields.io/badge/NeuralTextures-f43f5e?style=flat-square" alt="NeuralTextures"/>
 </p>
 
-We extracted the frames and faces from these videos to create our dataset:  
+We extracted the frames and faces from these videos to create our dataset:
 **<a href="https://www.kaggle.com/datasets/gazeux330000/deepfake-dataset/settings" target="_blank">VeridisQuo Preprocessed Dataset</a>**
+
+### Preprocessing Pipeline
+The dataset was built using the following pipeline:
+1. **Frame Extraction**: 1 FPS from videos (PyAV GPU-accelerated)
+2. **Face Detection**: YOLO-based detector (confidence ≥ 0.7)
+3. **Face Extraction**: 224×224 crops with 20px padding
+4. **Dataset Split**: Stratified 70/15/15 split
+5. **Class Balancing**: Oversample minority class
+
+**Build scripts**:
+```bash
+./scripts/download_raw_data.sh          # Download FaceForensics++ videos
+./scripts/download_preprocessed_data.sh # Download preprocessed faces
+./scripts/build_dataset.sh              # Build from raw videos
+```
 
 </td>
 <td width="50%" valign="top">
@@ -183,7 +225,7 @@ We extracted the frames and faces from these videos to create our dataset:
 | `scheduler` | Warmup + Cosine Annealing |
 | `warmup_epochs` | 2 |
 | `use_automixed_precision` | false |
-| `loss_func` | *(to be specified)* |
+| `loss_func` | CrossEntropyLoss |
 
 <br>
 <p align="center">
@@ -213,44 +255,250 @@ We extracted the frames and faces from these videos to create our dataset:
 <br>
 <img src="./assets/training/val_loss.png" alt="Validation Loss" width="400">-->
 
+### Final Metrics
+| Metric | Value |
+|:-------|:------|
+| **Test Accuracy** | 94.2% |
+| **F1-Score** | 0.941 |
+| **Training Time** | ~4 hours (RTX 3090) |
+
+Model available on [HuggingFace](https://huggingface.co/Gazeux33/VeridisQuo/tree/main)
+
 </td>
 </tr>
 </table>
 
+## API Reference
 
+### Endpoints
 
-## Launch
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `GET` | `/api/v1/health` | Health check and model status |
+| `POST` | `/api/v1/analyze` | Analyze video for deepfakes |
+| `GET` | `/api/v1/outputs/{filename}` | Download GradCAM visualization |
+| `DELETE` | `/api/v1/outputs/{filename}` | Delete output file |
 
-### API Service
+### Request Format (POST /api/v1/analyze)
 
+```bash
+curl -X POST http://localhost:8000/api/v1/analyze \
+  -F "file=@video.mp4" \
+  -F "fps=1" \
+  -F "aggregation_method=majority" \
+  -F "generate_gradcam=true"
+```
+
+**Parameters**:
+- `file`: Video file (MP4, AVI, MOV, MKV, WEBM)
+- `fps`: Frames per second to extract (default: 1)
+- `aggregation_method`: Score aggregation (default: majority)
+- `generate_gradcam`: Generate visualization video (default: false)
+
+### Response Format
+
+```json
+{
+  "prediction": "FAKE",
+  "confidence": 0.8734,
+  "aggregation_method": "majority",
+  "total_frames": 120,
+  "gradcam_video_path": "/api/v1/outputs/gradcam_video_20250102.mp4"
+}
+```
+
+---
+
+## Configuration
+
+VeridisQuo uses three configuration files:
+
+### config.json
+Production configuration with full architecture parameters.
+- Model paths (HuggingFace auto-download)
+- Device settings (auto/cpu/cuda)
+- Architecture hyperparameters
+- Preprocessing settings
+
+### inference_config.yml
+Inference-specific settings.
+```yaml
+frame_extraction:
+  frames_per_second: 1
+  use_optimized: true  # PyAV GPU extractor
+batch_processing:
+  default_batch_size: 32
+score_aggregation:
+  aggregation_method: majority
+gradcam:
+  enabled: false
+```
+
+### training_config.yml
+Training hyperparameters.
+```yaml
+training:
+  batch_size: 64
+  num_epochs: 25
+  optimizer: AdamW
+  learning_rate: 1e-4
+scheduler:
+  type: cosine_with_warmup
+  warmup_epochs: 3
+```
+
+---
+
+## Quick Start
+
+### Prerequisites
+- Python 3.12 or 3.13
+- [uv](https://docs.astral.sh/uv/) package manager
+- Node.js 18+ and npm (for frontend)
+- CUDA 11.8+ (optional, for GPU acceleration)
+
+### Installation
+
+**Backend**:
+```bash
+# Clone repository
+git clone https://github.com/VeridisQuo-orga/VeridisQuo.git
+cd VeridisQuo
+
+# Install dependencies
+uv sync --extra dev --extra api
+
+# Models auto-download from HuggingFace on first run
+```
+
+**Frontend**:
+```bash
+cd frontend
+npm install
+```
+
+### Basic Usage
+
+**CLI Inference** (single video):
+```bash
+uv run python src/main.py \
+  --config inference_config.yml \
+  --mode inference \
+  --input path/to/video.mp4
+```
+
+**API Service**:
 ```bash
 chmod +x ./scripts/launch_api.sh
 ./scripts/launch_api.sh
 ```
+Server runs on `http://localhost:8000` | Docs at `/docs`
 
-**FastAPI server** running on `http://localhost:8000`
-
-| Endpoint | Description |
-|:---------|:------------|
-| `/docs` | Interactive API documentation (Swagger) |
-| `/api/v1/health` | Health check and model status |
-| `/api/v1/analyze` | Video deepfake detection endpoint |
-
-**Custom launch options**:
+**Custom launch**:
 ```bash
 uv run python src/launch.py --port 8080 --reload --debug
 ```
 
-### Frontend Service
-
+**Frontend Service**:
 ```bash
 chmod +x ./scripts/launch_frontend.sh
 ./scripts/launch_frontend.sh
 ```
-
-**React + Vite** development server on `http://localhost:3000`
+Development server on `http://localhost:3000`
 
 API requests automatically proxied to backend via Vite ([vite.config.ts:10](frontend/vite.config.ts#L10))
+
+---
+
+## Usage
+
+### CLI Interface
+
+VeridisQuo supports three execution modes via [src/main.py](src/main.py):
+
+**Inference Mode**:
+```bash
+# Single file
+uv run python src/main.py --config inference_config.yml --mode inference --input video.mp4
+
+# Directory batch processing
+uv run python src/main.py --config inference_config.yml --mode inference --input videos/
+```
+
+**Training Mode**:
+```bash
+uv run python src/main.py --config training_config.yml --mode train
+```
+
+**Dataset Building Mode**:
+```bash
+uv run python src/main.py --config config.json --mode build_dataset
+```
+
+### API Usage
+
+See [API Reference](#api-reference) section above.
+
+### Frontend Usage
+
+The React frontend provides:
+- Drag-and-drop video upload
+- Real-time analysis progress tracking
+- Configurable FPS, aggregation method, GradCAM generation
+- Results display with authenticity score
+- GradCAM video player
+
+---
+
+## Testing
+
+### Test Suite
+- 15+ test modules covering all components
+- Location: `tests/` directory
+- Coverage: spatial, frequency, classification, preprocessing, inference
+
+### Run Tests
+```bash
+chmod +x ./scripts/run_tests.sh
+./scripts/run_tests.sh
+```
+
+Or manually:
+```bash
+uv sync --extra dev
+uv run pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
+```
+
+### CI/CD
+GitHub Actions workflow runs tests on every push/PR to main branch.
+- Python 3.13 on Ubuntu
+- Full test suite with coverage reporting
+- Configuration: [.github/workflows/tests.yml](.github/workflows/tests.yml)
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+## Citation
+
+If you use VeridisQuo in your research, please cite:
+
+```bibtex
+@software{veridisquo2025,
+  title = {VeridisQuo: Hybrid Deepfake Detection with Explainable AI},
+  author = {Barriere, Clement and Castillo, Theo},
+  year = {2025},
+  url = {https://github.com/VeridisQuo-orga/VeridisQuo},
+  note = {Model: \url{https://huggingface.co/Gazeux33/VeridisQuo}}
+}
+```
+
+### Model Reference
+Pre-trained model: [Gazeux33/VeridisQuo](https://huggingface.co/Gazeux33/VeridisQuo) (40M parameters)
 
 
 
