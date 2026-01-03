@@ -15,7 +15,13 @@ from utils.inference_results_dataclasses import InferenceResult, VideoInferenceR
 from inference.score_aggregator import ScoreAggregator, AggregatedScore
 from inference.batch_prefetcher import BatchPrefetcher
 from utils.config_dataclasses import InferenceConfig
-from config import PROJECT_ROOT, MODEL_FILENAME, FACE_DETECTION_MODEL_PATH, HF_MODEL_URL
+from config import (
+    PROJECT_ROOT,
+    MODEL_FILENAME,
+    FACE_DETECTION_MODEL_PATH,
+    FACE_DETECTION_HF_URL,
+    HF_MODEL_URL
+)
 from gradcam.gradcam import GradCAM, GradCAMVisualizer
 
 
@@ -89,21 +95,29 @@ class InferenceEngine:
 
         face_detection_model_path = Path(self.config.paths.face_detection_model_path) if self.config.paths.face_detection_model_path else FACE_DETECTION_MODEL_PATH
 
-        if self.config.preprocessing.face_detection.enabled and face_detection_model_path.exists():
-            self.logger.info("Initializing FaceDetector...")
+        if self.config.preprocessing.face_detection.enabled:
+            # Auto-download face detection model if not found
+            if not face_detection_model_path.exists() and self.config.inference_options.auto_download_model:
+                self.logger.warning(f"Face detection model not found at {face_detection_model_path}, downloading from Hugging Face...")
+                self._download_face_detection_model(face_detection_model_path)
 
-            self.face_detector = FaceDetector(
-                model_path=str(face_detection_model_path),
-                device=str(self.device),
-                min_face_size=self.config.preprocessing.face_detection.min_face_size,
-                confidence_threshold=self.config.preprocessing.face_detection.confidence_threshold,
-                only_keep_top=self.config.preprocessing.face_detection.only_keep_top
-            )
+            if face_detection_model_path.exists():
+                self.logger.info("Initializing FaceDetector...")
+
+                self.face_detector = FaceDetector(
+                    model_path=str(face_detection_model_path),
+                    device=str(self.device),
+                    min_face_size=self.config.preprocessing.face_detection.min_face_size,
+                    confidence_threshold=self.config.preprocessing.face_detection.confidence_threshold,
+                    only_keep_top=self.config.preprocessing.face_detection.only_keep_top
+                )
+            else:
+                self.logger.warning(
+                    f"Face detection model not found at {face_detection_model_path} and auto-download is disabled. "
+                    "Video inference will process entire frames instead of detected faces."
+                )
         else:
-            self.logger.warning(
-                f"Face detection disabled or model not found at {face_detection_model_path}. "
-                "Video inference will process entire frames instead of detected faces."
-            )
+            self.logger.info("Face detection is disabled in configuration.")
 
         self.image_size: Tuple[int, int] = self.config.preprocessing.face_extraction.target_size
         """Image size for preprocessing (width, height)"""
@@ -180,6 +194,40 @@ class InferenceEngine:
 
         except Exception as e:
             error_msg = f"Failed to download model from Hugging Face: {e}"
+            self.logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+    def _download_face_detection_model(self, model_path: Path) -> None:
+        """Download face detection model from Hugging Face.
+
+        Parameters:
+            model_path: Path where the model should be saved
+
+        Raises:
+            RuntimeError: if download fails
+        """
+        try:
+            self.logger.info(f"Downloading face detection model from {FACE_DETECTION_HF_URL}...")
+
+            # Create parent directory if needed
+            model_path.parent.mkdir(parents=True, exist_ok=True)
+
+            def _progress_hook(count: int, block_size: int, total_size: int) -> None:
+                """Progress callback for model download."""
+                percent = int(count * block_size * 100 / total_size)
+                if count % 100 == 0:
+                    self.logger.info(f"Download progress: {percent}%")
+
+            urllib.request.urlretrieve(
+                FACE_DETECTION_HF_URL,
+                model_path,
+                reporthook=_progress_hook
+            )
+
+            self.logger.info(f"Face detection model downloaded successfully to {model_path}")
+
+        except Exception as e:
+            error_msg = f"Failed to download face detection model from Hugging Face: {e}"
             self.logger.error(error_msg)
             raise RuntimeError(error_msg)
 
