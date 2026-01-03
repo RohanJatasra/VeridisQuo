@@ -17,7 +17,7 @@ paths:
         model_filename: veridisquo_40M.pth
         url: https://huggingface.co/Gazeux33/VeridisQuo/resolve/main/veridisquo_40M.pth
     face_detection:
-      custom_weights_path: models/face_detection/face_detection.pt
+      custom_weights_path: models/face_detection/model.pt 
       enabled: true
     efficientnet:
       # EfficientNet weights - null uses ImageNet pretrained
