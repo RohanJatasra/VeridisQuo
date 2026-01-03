@@ -15,6 +15,15 @@ A state-of-the-art neural network designed to **detect deepfake videos** and **h
 ---
 #### **How does it work?**
 VeridisQuo uses a **hybrid architecture** combining spatial and frequency-domain analysis. **EfficientNet-B4** extracts spatial features from faces, while **frequency analysis** captures artifacts invisible to the human eye. These streams merge into a unified classifier, achieving robust detection across multiple deepfake techniques.
+
+---
+#### **Try it online!**
+<p align="center">
+  <a href="https://huggingface.co/spaces/Gazeux33/veridisquo-deepfake-detection" target="_blank">
+    <img src="https://img.shields.io/badge/🤗%20Try%20Demo-VeridisQuo%20Space-ff9d00?style=for-the-badge" alt="HuggingFace Space"/>
+  </a>
+</p>
+
 </td>
 <td width="40%" valign="middle" align="center">
 <img src="./assets/logo/VeridisQuo.png" alt="VeridisQuo Logo" width="100%">
@@ -207,7 +216,7 @@ We extracted the frames and faces from these videos to create our dataset:
 ### Preprocessing Pipeline
 The dataset was built using the following pipeline:
 1. **Frame Extraction**: 1 FPS from videos (PyAV GPU-accelerated)
-2. **Face Detection**: YOLO-based detector (confidence ≥ 0.7)
+2. **Face Detection**: [YOLOv11n-face-detection](https://huggingface.co/AdamCodd/YOLOv11n-face-detection) (confidence ≥ 0.7)
 3. **Face Extraction**: 224×224 crops with 20px padding
 4. **Dataset Split**: Stratified 70/15/15 split
 5. **Class Balancing**: Oversample minority class
