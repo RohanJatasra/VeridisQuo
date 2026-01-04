@@ -33,18 +33,17 @@ class FaceDatasetBuilder:
     FACES_METADATA_FILE = "faces_metadata.csv"
     FRAMES_METADATA_FILE = "frames_metadata.csv"
 
-    def __init__(
-        self,
+    def __init__(self,
         frame_dir: str,
         faces_dir: str,
         num_workers: int,
-        min_face_size: int = 40,
-        confidence_threshold: float = 0.7,
-        only_keep_top_face: bool = True,
-        face_target_size: Tuple[int, int] = (224, 224),
-        face_normalization: str = "zero_one",
-        face_padding: int = 20,
-        device: str = "cpu"
+        min_face_size: int,
+        confidence_threshold: float,
+        only_keep_top_face: bool,
+        face_target_size: Tuple[int, int] ,
+        face_normalization: str,
+        face_padding: int,
+        device: str
     ):
         """
         Initialize FaceDatasetBuilder.
@@ -74,7 +73,7 @@ class FaceDatasetBuilder:
         self.face_padding = face_padding
         self.device = device
 
-        self.logger = logging.getLogger("FaceDatasetBuilder")
+        self.logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
 
     def extract_faces(self) -> List[FaceCSVItem]:
         """
@@ -112,10 +111,7 @@ class FaceDatasetBuilder:
 
         return CSVService.load_csv(metadata_path, FrameCSVItem)
 
-    def _parallel_process_frames(
-        self,
-        frames_data: List[FrameCSVItem]
-    ) -> Tuple[List[FaceCSVItem], Dict[str, int]]:
+    def _parallel_process_frames(self, frames_data: List[FrameCSVItem]) -> Tuple[List[FaceCSVItem], Dict[str, int]]:
         """
         Process frames to extract faces.
 
@@ -150,10 +146,7 @@ class FaceDatasetBuilder:
 
         return faces_csv_data, stats
 
-    def _sequential_process_frames(
-        self,
-        frames_data: List[FrameCSVItem]
-    ) -> List[List[FaceCSVItem]]:
+    def _sequential_process_frames(self, frames_data: List[FrameCSVItem]) -> List[List[FaceCSVItem]]:
         """
         Process frames sequentially (for GPU).
 
@@ -189,10 +182,7 @@ class FaceDatasetBuilder:
 
         return results
 
-    def _multiprocess_frames(
-        self,
-        frames_data: List[FrameCSVItem]
-    ) -> List[List[FaceCSVItem]]:
+    def _multiprocess_frames(self, frames_data: List[FrameCSVItem]) -> List[List[FaceCSVItem]]:
         """Process frames in parallel using multiprocessing (for CPU)."""
         process_func = partial(
             self._process_single_frame,
@@ -216,8 +206,7 @@ class FaceDatasetBuilder:
 
         return results
 
-    def _process_single_frame_with_detectors(
-        self,
+    def _process_single_frame_with_detectors(self,
         frame_data: FrameCSVItem,
         face_detector: FaceDetector,
         face_extractor: FaceExtractor
@@ -293,7 +282,7 @@ class FaceDatasetBuilder:
         face_target_size: Tuple[int, int],
         face_normalization: str,
         face_padding: int,
-        device: str = "cpu"
+        device: str
     ) -> List[FaceCSVItem]:
         """
         Worker function to extract faces from a single frame.
@@ -366,7 +355,7 @@ class FaceDatasetBuilder:
             return faces_data
 
         except Exception as e:
-            logger = logging.getLogger("FaceDatasetBuilder.Worker")
+            logger = logging.getLogger("/".join(__file__.split("/")[-2:]) + ".Worker")
             logger.error(f"Error processing frame {frame_path}: {str(e)}")
             return []
 
