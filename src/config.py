@@ -31,14 +31,14 @@ FACE_DETECTION_MODEL_PATH: Path = PROJECT_ROOT / "models" / "face_detection" / "
 
 # Deepfake detection model
 DEEPFAKE_DETECTION_MODEL_DIR: Path = PROJECT_ROOT / "models" / "deepfake_detection"
-DEEPFAKE_DETECTION_MODEL_PATH: Path = DEEPFAKE_DETECTION_MODEL_DIR / "veridisquo_40M.pth"
+DEEPFAKE_DETECTION_MODEL_PATH: Path = DEEPFAKE_DETECTION_MODEL_DIR / "veridisquo_25M.pth"
 
 # Preprocessed dataset folders (balanced and split)
 PREPROCESSED_DATASET_DIR: Path = PROJECT_ROOT / "data"
 
 # Published models on Hugging Face fetched for inference engine
 HF_REPO_ID: str = "Gazeux33/VeridisQuo"
-MODEL_FILENAME: str = "veridisquo_40M.pth"
+MODEL_FILENAME: str = "veridisquo_25M.pth"
 HF_MODEL_URL: str = f"https://huggingface.co/{HF_REPO_ID}/resolve/main/{MODEL_FILENAME}"
 
 # Preprocessing parameters

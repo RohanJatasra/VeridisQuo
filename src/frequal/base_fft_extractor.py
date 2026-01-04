@@ -88,7 +88,7 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
         """Multiplier for energy band end index"""
         self.epsilon: float = epsilon
         """Small constant for numerical stability"""
-
+        
         self._num_raw_features: int = self._calculate_raw_feature_dim()
 
         self.projection: nn.Linear = nn.Linear(self._num_raw_features, feature_dim)

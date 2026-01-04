@@ -47,12 +47,12 @@ class ConfigService(Dict[str, Any]):
             else:
                 raise ValueError(f"Unsupported configuration file format: {file_extension}. Supported formats: .json, .yml, .yaml")
 
-            cls.logger.info(f"Configuration loaded successfully from {config_path} ({file_extension[1:].upper()})")
+            cls.class_logger.info(f"Configuration loaded successfully from {config_path} ({file_extension[1:].upper()})")
             return config
 
         except (AssertionError, FileNotFoundError, ValueError) as e:
             err_mess = f"Error loading configuration from {config_path}: {e}"
-            cls.logger.fatal(err_mess)
+            cls.class_logger.fatal(err_mess)
             raise RuntimeError(err_mess) from e
      
     @classmethod
