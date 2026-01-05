@@ -157,7 +157,12 @@ class BaseFramesExtractor(ABC):
         it falls back to the standard extractor.
         Parameters:
             use_optimized (bool): whether to use optimized (PyAV) or standard (OpenCV) implementation
-            **kwargs: additional parameters for the extractor
+            **kwargs: additional parameters for the extractor. Can include:
+            - video_path (str): path to the video file
+            - nb_fps (int): number of frames to extract per second
+            - device (str): device to use (e.g., 'cpu' or 'cuda')
+            - num_threads (int): number of threads for extraction
+            - batch_size (int): batch size for extraction
         Returns:
             BaseFramesExtractor: instance of a frames extractor
         """

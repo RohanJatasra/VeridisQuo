@@ -3,7 +3,7 @@ import logging
 from typing import List, Optional
 from collections import defaultdict
 
-from core.schemas import FaceCSVItem, DatasetSplit
+from core.csv_schemas import FaceCSVItem, DatasetSplit
 
 
 class DatasetSplitter:

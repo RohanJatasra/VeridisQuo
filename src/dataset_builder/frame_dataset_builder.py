@@ -14,7 +14,7 @@ from functools import partial
 
 from tqdm import tqdm
 
-from core.schemas import CSVItem, FrameCSVItem
+from core.csv_schemas import CSVItem, FrameCSVItem
 from utils.csv_services import CSVService
 
 # Import optimized extractor with fallback

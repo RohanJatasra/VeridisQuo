@@ -4,7 +4,7 @@ FaceForensic++ Dataset loader.
 
 from typing import Dict, List
 from utils.csv_services import CSVService
-from core.schemas import CSVItem
+from core.csv_schemas import CSVItem
 
 
 class FaceForensicDataset:

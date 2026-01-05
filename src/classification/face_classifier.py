@@ -18,11 +18,11 @@ class FaceClassifier(nn.Module):
 
     def __init__(self,
         input_dim: int,
-        num_classes: int =2,
-        hidden_dims: Optional[List[int]] =None,
-        dropout_rate: float =0.2, 
-        use_batch_norm: bool =True,
-        path_to_weights: Optional[str] =None
+        num_classes: int,
+        hidden_dims: Optional[List[int]],
+        dropout_rate: float, 
+        use_batch_norm: bool,
+        path_to_weights: Optional[str]
     ):
         """Initialize FaceClassifier.
         Parameters:

@@ -26,10 +26,10 @@ class OptimizedFramesExtractor(BaseFramesExtractor):
 
     def __init__(self,
         video_path: str,
-        nb_fps: Optional[int] = None,
-        device: str = "cpu",
-        num_save_threads: int = 4,
-        batch_size: int = 32,
+        nb_fps: Optional[int],
+        device: str,
+        num_save_threads: int,
+        batch_size: int,
     ):
         """Initialize OptimizedFramesExtractor.
         Parameters:

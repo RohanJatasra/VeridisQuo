@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Tuple, Optional
 import logging
 
-from core.schemas import PreprocessCSVItem
+from core.csv_schemas import PreprocessCSVItem
 from utils.csv_services import CSVService
 
 

@@ -67,7 +67,7 @@ class GradCAM:
     def generate_cam(
         self,
         input_tensor: torch.Tensor,
-        target_class: Optional[int] = None
+        target_class: Optional[int]
     ) -> torch.Tensor:
         """
         Generate class activation map for the input.
@@ -158,8 +158,8 @@ class GradCAM:
     def __call__(
         self,
         input_tensor: torch.Tensor,
-        target_class: Optional[int] = None,
-        upsample_to: Optional[Tuple[int, int]] = None
+        target_class: Optional[int],
+        upsample_to: Optional[Tuple[int, int]]
     ) -> torch.Tensor:
         """
         Generate and optionally upsample CAM.

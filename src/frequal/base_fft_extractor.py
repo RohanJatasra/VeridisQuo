@@ -25,7 +25,6 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
         artifact_edge_width: int,
         artifact_num_radial_samples: int,
         artifact_center_region_size: int,
-        default_smoothing_kernel_size: int,
         energy_band_start_multiplier: int,
         energy_band_end_multiplier: int,
         epsilon: float
