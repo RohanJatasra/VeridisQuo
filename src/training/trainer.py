@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import LambdaLR
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, Tuple
 from pathlib import Path
 import logging
 from datetime import datetime
@@ -11,7 +11,8 @@ import numpy as np
 
 from data.dataset import FaceDataset
 from data.dataloader import DataLoaderWrapper
-from core import DeepFakeDetector, TrainingConfig
+from core import DeepFakeDetector
+from utils import TrainingConfig
 
 class Trainer:
     """Training orchestrator for DeepFakeDetector model.
