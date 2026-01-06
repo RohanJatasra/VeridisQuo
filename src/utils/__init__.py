@@ -12,8 +12,14 @@ from .images_utils import (
     torch_to_numpy
 )
 from .utils import get_device
-from .inference_results_dataclasses import InferenceResult, VideoInferenceResult
 from .config_services import ConfigService
+from .config_schemas import (
+    InferenceConfig, TrainingConfig, ModelArchitectureConfig, 
+    ClassifierConfig, SpatialFeatureConfig, FrequencyFeatureConfig,
+    PreprocessingConfig, DataLoaderConfig
+)
+from .csv_schemas import CSVItem, FrameCSVItem, FaceCSVItem, PreprocessCSVItem, DatasetSplit
+
 
 __all__ = [
     "CSVService",
@@ -24,7 +30,16 @@ __all__ = [
     "is_bgr",
     "torch_to_numpy",
     "get_device",
-    "InferenceResult",
-    "VideoInferenceResult",
-    "ConfigService"
+    "ConfigService",
+    "InferenceConfig",
+    "TrainingConfig",
+    "CSVItem",
+    "FrameCSVItem",
+    "FaceCSVItem",
+    "PreprocessCSVItem",
+    "DatasetSplit",
+    "ModelArchitectureConfig",
+    "ClassifierConfig",
+    "SpatialFeatureConfig",
+    "FrequencyFeatureConfig",
 ]

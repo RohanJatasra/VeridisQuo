@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import torch
 from typing import List
-import logging
 from .utils import convert_to_luminance, convert_to_grayscale, zigzag_indices, format_image
 from .base_dct_extractor import BaseDCTExtractor
 
@@ -82,11 +81,12 @@ class NpDCTExtractor(BaseDCTExtractor):
                 batch_features.append(features)
 
             except Exception as e:
-                self.logger.error(f"- extract - Error processing image {i}: {e}")
-                raise RuntimeError(f"Error extracting features from image {i}: {e}")
+                err_msg = f"Error processing image {i}: {e}"
+                self.logger.error(err_msg)
+                raise RuntimeError(err_msg)
 
         result = np.stack(batch_features, axis=0)
-        self.logger.debug(f"- extract - Extracted features with shape {result.shape}")
+        self.logger.debug(f"Extracted features with shape {result.shape}")
         return result
 
     def _preprocess_image(self, image: np.ndarray) -> np.ndarray:
@@ -112,11 +112,14 @@ class NpDCTExtractor(BaseDCTExtractor):
                     self.logger.warning("- _preprocess_image - per_channel mode not fully supported, using luminance")
                     return convert_to_luminance(image)
                 case _:
-                    raise ValueError(f"Unknown channel mode: {self.channel_mode}")
+                    err_msg = f"Unknown channel mode: {self.channel_mode}"
+                    self.logger.error(err_msg)
+                    raise ValueError(err_msg)
 
         except Exception as e:
-            self.logger.error(f"- _preprocess_image - {e}")
-            raise ValueError(f"Error preprocessing image: {e}")
+            err_msg = f"Error preprocessing image: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
     def _extract_dct_blocks(self, image: np.ndarray) -> List[np.ndarray]:
         """Divide image into non-overlapping blocks and apply DCT to each.
@@ -135,8 +138,9 @@ class NpDCTExtractor(BaseDCTExtractor):
         num_blocks_w = w // block_size
 
         if num_blocks_h == 0 or num_blocks_w == 0:
-            self.logger.error(f"- _extract_dct_blocks - Image too small ({h}x{w}) for block size {block_size}")
-            raise ValueError(f"Image dimensions {h}x{w} too small for block size {block_size}")
+            err_msg = f"Image too small ({h}x{w}) for block size {block_size}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
         dct_blocks = []
 
@@ -156,10 +160,11 @@ class NpDCTExtractor(BaseDCTExtractor):
                     dct_blocks.append(dct_block)
 
         except Exception as e:
-            self.logger.error(f"- _extract_dct_blocks - Error applying DCT: {e}")
-            raise RuntimeError(f"Error extracting DCT blocks: {e}")
+            err_msg = f"Error extracting DCT blocks: {e}"
+            self.logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
-        self.logger.debug(f"- _extract_dct_blocks - Extracted {len(dct_blocks)} DCT blocks")
+        self.logger.debug(f"Extracted {len(dct_blocks)} DCT blocks")
         return dct_blocks
 
     def _aggregate_block_features(self, dct_blocks: List[np.ndarray]) -> np.ndarray:
@@ -175,16 +180,21 @@ class NpDCTExtractor(BaseDCTExtractor):
             assert len(dct_blocks) > 0, "No DCT blocks to aggregate"
 
         except AssertionError as e:
-            self.logger.error(f"- _aggregate_block_features - {e}")
-            raise ValueError(f"Invalid DCT blocks: {e}")
+            err_msg = f"Invalid DCT blocks: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
         match self.aggregation_method:
             case "frequency_bands":
                 return self._frequency_bands_aggregation(dct_blocks)
             case "zigzag":
                 return self._zigzag_aggregation(dct_blocks)
-            case _:  #statistical
+            case "statistical":
                 return self._statistical_aggregation(dct_blocks)
+            case _:
+                err_msg = f"Unknown aggregation method: {self.aggregation_method}"
+                self.logger.error(err_msg)
+                raise ValueError(err_msg)
 
     def _frequency_bands_aggregation(self, dct_blocks: List[np.ndarray]) -> np.ndarray:
         """Aggregate DCT blocks by frequency bands.
@@ -243,7 +253,7 @@ class NpDCTExtractor(BaseDCTExtractor):
 
         #high frequency ratio (energy in highest band / total energy)
         total_energy = np.sum(band_energies)
-        high_freq_ratio = band_energies[-1] / (total_energy + self.EPSILON)
+        high_freq_ratio = band_energies[-1] / (total_energy + self.epsilon)
 
         #histogram of coefficient magnitudes (10 bins)
         hist, _ = np.histogram(np.abs(all_dct_coeffs), bins=10, range=(0, 100), density=True)
@@ -293,7 +303,6 @@ class NpDCTExtractor(BaseDCTExtractor):
         Returns:
             np.ndarray: aggregated features [num_raw_features]
         """
-        block_size = self.block_size
 
         #stack all blocks into 3D array [num_blocks, block_size, block_size]
         blocks_array = np.array(dct_blocks)

@@ -1,9 +1,7 @@
 from typing import List, Tuple, Dict, Any, Callable, Union
 from dataclasses import dataclass
 import logging
-
-from utils.inference_results_dataclasses import InferenceResult
-
+from inference import InferenceResult
 
 @dataclass
 class AggregatedScore:
@@ -41,7 +39,7 @@ class ScoreAggregator:
     ]
     """Available aggregation methods"""
 
-    def __init__(self, method: str ="majority"):
+    def __init__(self, method: str):
         """Initialize ScoreAggregator.
         Parameters:
             method (str): Aggregation method to use
@@ -313,7 +311,7 @@ class ScoreAggregator:
         return prediction, confidence, metadata
 
     @staticmethod
-    def compare_methods(cls,
+    def compare_methods(
         frame_results: List[InferenceResult],
         methods: List[str] = None
     ) -> Dict[str, AggregatedScore]:

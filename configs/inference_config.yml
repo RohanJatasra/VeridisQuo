@@ -17,8 +17,7 @@ paths:
         model_filename: veridisquo_40M.pth
         url: https://huggingface.co/Gazeux33/VeridisQuo/resolve/main/veridisquo_40M.pth
     face_detection:
-      custom_weights_path: models/face_detection/model.pt 
-      enabled: true
+      custom_weights_path: models/face_detection/face_detection.pt
     efficientnet:
       # EfficientNet weights - null uses ImageNet pretrained
       custom_weights_path: null
@@ -33,6 +32,7 @@ paths:
     logs_dir: logs
     # Directory to save inference results
     results_dir: output
+    gradcam_dir: output/gradcam
 
 device:
   # Device configuration for inference
@@ -51,6 +51,7 @@ model_architecture:
     # EfficientNet-B4 for spatial feature extraction
     # Description: Pretrained on ImageNet, extracts spatial features from faces
     name: EfficientNet-B4
+    pretrained: true
     output_dim: 1792
 
   frequency_features:
@@ -73,9 +74,9 @@ model_architecture:
         artifact_num_radial_samples: 50
         artifact_center_region_size: 20
         artifact_edge_width: 5
-        default_smoothing_kernel_size: 5
         energy_band_start_multiplier: 2
         energy_band_end_multiplier: 3
+        default_smoothing_kernel_size: 5
 
     dct:
       # Discrete Cosine Transform parameters
@@ -172,6 +173,11 @@ inference:
     include_frame_results: true
     include_metadata: true
     include_raw_logits: false
+
+  gradcam:
+    # Grad-CAM explainability settings
+    enabled: true
+    overlay_alpha: 0.4  # Transparency of heatmap overlay
 
 logging:
   # Logging configuration

@@ -15,7 +15,7 @@ import logging
 import torch
 
 # Import generic image utilities from utils module
-from utils.images_utils import (
+from utils import (
     convert_to_luminance as _convert_to_luminance,
     convert_to_grayscale as _convert_to_grayscale,
     convert_per_channel as _convert_per_channel,

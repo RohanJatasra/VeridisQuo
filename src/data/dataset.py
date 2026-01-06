@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Tuple, Optional
 import logging
 
-from core.schemas import PreprocessCSVItem
+from core.csv_schemas import PreprocessCSVItem
 from utils.csv_services import CSVService
 
 
@@ -24,12 +24,11 @@ class FaceDataset(TorchDataset):
 
     LABEL_MAP = {"FAKE": 0, "REAL": 1}
 
-    def __init__(
-        self,
+    def __init__(self,
         csv_path: str,
-        data_root: Optional[str] = None,
-        image_size: Tuple[int, int] = (224, 224),
-        augment: bool = False
+        data_root: Optional[str],
+        image_size: Tuple[int, int],
+        augment: bool
     ):
         """
         Initialize FaceDataset.
@@ -40,7 +39,7 @@ class FaceDataset(TorchDataset):
             image_size: Target image size (height, width)
             augment: Whether to apply data augmentation (for training)
         """
-        self.logger = logging.getLogger("data.FaceDataset")
+        self.logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
         self.csv_path = Path(csv_path)
 
         # Data root is the directory containing the CSV
@@ -65,8 +64,29 @@ class FaceDataset(TorchDataset):
             f"(augment={augment})"
         )
 
-    def _build_transforms(self) -> transforms.Compose:
-        """Build image transforms pipeline."""
+    def _build_transforms(self,
+        prob: float,
+        degrees: int,
+        brightness: float,
+        contrast: float,
+        saturation: float,
+        hue: float,
+        means: Tuple[float, float, float],
+        stds: Tuple[float, float, float],
+    ) -> transforms.Compose:
+        """Build image transforms pipeline.
+        Args:
+            prob: Probability for horizontal flip
+            degrees: Max degrees for random rotation
+            brightness: Brightness factor for ColorJitter
+            contrast: Contrast factor for ColorJitter
+            saturation: Saturation factor for ColorJitter
+            hue: Hue factor for ColorJitter
+            means: Mean values for normalization
+            stds: Stddev values for normalization
+        Returns:
+            Composed torchvision transforms
+        """
         transform_list = []
 
         # Resize to target size
@@ -75,13 +95,13 @@ class FaceDataset(TorchDataset):
         # Data augmentation for training
         if self.augment:
             transform_list.extend([
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomRotation(degrees=10),
+                transforms.RandomHorizontalFlip(p=prob),
+                transforms.RandomRotation(degrees=degrees),
                 transforms.ColorJitter(
-                    brightness=0.2,
-                    contrast=0.2,
-                    saturation=0.1,
-                    hue=0.05
+                    brightness=brightness,
+                    contrast=contrast,
+                    saturation=saturation,
+                    hue=hue
                 ),
             ])
 
@@ -89,8 +109,8 @@ class FaceDataset(TorchDataset):
         transform_list.extend([
             transforms.ToTensor(),
             transforms.Normalize(
-                mean=[0.485, 0.456, 0.406],  # ImageNet stats
-                std=[0.229, 0.224, 0.225]
+                mean=means,  # ImageNet stats
+                std=stds
             )
         ])
 

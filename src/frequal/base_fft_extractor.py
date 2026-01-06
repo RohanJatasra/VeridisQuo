@@ -20,15 +20,15 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
         high_freq_emphasis: bool,
         feature_dim: int,
         logger_name: str,
-        num_azimuthal_sectors: int = 8,
-        high_freq_threshold_ratio: float = 0.5,
-        artifact_edge_width: int = 5,
-        artifact_num_radial_samples: int = 50,
-        artifact_center_region_size: int = 20,
-        default_smoothing_kernel_size: int = 5,
-        energy_band_start_multiplier: int = 2,
-        energy_band_end_multiplier: int = 3,
-        epsilon: float = 1e-10
+        num_azimuthal_sectors: int,
+        high_freq_threshold_ratio: float,
+        artifact_edge_width: int,
+        artifact_num_radial_samples: int,
+        artifact_center_region_size: int,
+        energy_band_start_multiplier: int,
+        energy_band_end_multiplier: int,
+        epsilon: float,
+        default_smoothing_kernel_size: int = 5
     ):
         """Initialize BaseFFTExtractor.
         Parameters:
@@ -43,10 +43,10 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
             artifact_edge_width (int): width of edge regions for artifact detection
             artifact_num_radial_samples (int): number of radial samples for upsampling detection
             artifact_center_region_size (int): half-size of center region for variance analysis
-            default_smoothing_kernel_size (int): default kernel size for spectrum smoothing
             energy_band_start_multiplier (int): multiplier for energy band start index
             energy_band_end_multiplier (int): multiplier for energy band end index
             epsilon (float): small constant for numerical stability
+            default_smoothing_kernel_size (int): default kernel size for spectrum smoothing (default: 5)
         Raises:
             ValueError: if parameters are invalid
         """
@@ -62,6 +62,7 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
             assert num_azimuthal_sectors > 0, "Number of azimuthal sectors must be positive"
             assert 0 < high_freq_threshold_ratio < 1, "High frequency threshold ratio must be in (0, 1)"
             assert epsilon > 0, "Epsilon must be positive"
+            assert default_smoothing_kernel_size > 0, "Smoothing kernel size must be positive"
 
         except AssertionError as e:
             self.logger.fatal(f"Invalid parameters: {e}")
@@ -73,51 +74,24 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
         """Window function type"""
         self.high_freq_emphasis: bool = high_freq_emphasis
         """Whether to emphasize high frequencies"""
-
         self.num_azimuthal_sectors: int = num_azimuthal_sectors
         """Number of angular sectors for directional analysis"""
-        self.NUM_AZIMUTHAL_SECTORS: int = num_azimuthal_sectors
-        """Number of angular sectors for directional analysis (uppercase alias)"""
-
         self.high_freq_threshold_ratio: float = high_freq_threshold_ratio
         """Ratio defining high-frequency region"""
-        self.HIGH_FREQ_THRESHOLD_RATIO: float = high_freq_threshold_ratio
-        """Ratio defining high-frequency region (uppercase alias)"""
-
         self.artifact_edge_width: int = artifact_edge_width
         """Width of edge regions for artifact detection"""
-        self.ARTIFACT_EDGE_WIDTH: int = artifact_edge_width
-        """Width of edge regions for artifact detection (uppercase alias)"""
-
         self.artifact_num_radial_samples: int = artifact_num_radial_samples
         """Number of radial samples for upsampling detection"""
-        self.ARTIFACT_NUM_RADIAL_SAMPLES: int = artifact_num_radial_samples
-        """Number of radial samples for upsampling detection (uppercase alias)"""
-
         self.artifact_center_region_size: int = artifact_center_region_size
         """Half-size of center region for variance analysis"""
-        self.ARTIFACT_CENTER_REGION_SIZE: int = artifact_center_region_size
-        """Half-size of center region for variance analysis (uppercase alias)"""
-
-        self.default_smoothing_kernel_size: int = default_smoothing_kernel_size
-        """Default kernel size for spectrum smoothing"""
-        self.DEFAULT_SMOOTHING_KERNEL_SIZE: int = default_smoothing_kernel_size
-        """Default kernel size for spectrum smoothing (uppercase alias)"""
-
         self.energy_band_start_multiplier: int = energy_band_start_multiplier
         """Multiplier for energy band start index"""
-        self.ENERGY_BAND_START_MULTIPLIER: int = energy_band_start_multiplier
-        """Multiplier for energy band start index (uppercase alias)"""
-
         self.energy_band_end_multiplier: int = energy_band_end_multiplier
         """Multiplier for energy band end index"""
-        self.ENERGY_BAND_END_MULTIPLIER: int = energy_band_end_multiplier
-        """Multiplier for energy band end index (uppercase alias)"""
-
         self.epsilon: float = epsilon
         """Small constant for numerical stability"""
-        self.EPSILON: float = epsilon
-        """Small constant for numerical stability (uppercase alias)"""
+        self.default_smoothing_kernel_size: int = default_smoothing_kernel_size
+        """Default kernel size for spectrum smoothing"""
 
         self._num_raw_features: int = self._calculate_raw_feature_dim()
 

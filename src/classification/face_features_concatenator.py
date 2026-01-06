@@ -10,8 +10,8 @@ class FaceFeaturesConcatenator(nn.Module):
     """
 
     def __init__(self,
-        spatial_feature_dim: int = 1792,
-        frequency_feature_dim: int = 1024
+        spatial_feature_dim: int =1792,
+        frequency_feature_dim: int =1024
     ):
         """Initialize FaceFeaturesConcatenator.
         Parameters:

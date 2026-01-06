@@ -109,14 +109,13 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
             ValueError: if image shape or format is invalid
         """
         try:
-            assert len(images.shape) == 4, \
-                f"Images must be 4D [batch, C, H, W], got shape {images.shape}"
-            assert images.shape[1] == 3, \
-                f"Images must have 3 channels (RGB), got {images.shape[1]}"
+            assert len(images.shape) == 4, f"Images must be 4D [batch, C, H, W], got shape {images.shape}"
+            assert images.shape[1] == 3, f"Images must have 3 channels (RGB), got {images.shape[1]}"
 
         except AssertionError as e:
-            self.logger.error(f"- extract - {e}")
-            raise ValueError(f"Invalid input images: {e}")
+            err_msg = f"Invalid input images: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
         #preprocess images to target channel mode
         preprocessed = self._preprocess_images(images)
@@ -130,7 +129,7 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
         #project to target dimension using learnable projection
         projected_features = self.projection(raw_features)
 
-        self.logger.debug(f"- extract - Extracted DCT features with shape {projected_features.shape}")
+        self.logger.debug(f"Extracted DCT features with shape {projected_features.shape}")
 
         return projected_features
 
@@ -150,11 +149,13 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
             elif self.channel_mode == "grayscale":
                 channel_images = self._convert_to_grayscale(images)
             elif self.channel_mode == "per_channel":
-                #per_channel mode not fully implemented
-                self.logger.warning("- _preprocess_images - per_channel mode not fully supported, using luminance")
+                #TODO per_channel mode not fully implemented
+                self.logger.warning("'per_channel' mode not fully supported, using luminance")
                 channel_images = self._convert_to_luminance(images)
             else:
-                raise ValueError(f"Unknown channel mode: {self.channel_mode}")
+                err_msg = f"Unknown channel mode: {self.channel_mode}"
+                self.logger.error(err_msg)
+                raise ValueError(err_msg)
 
             #normalize to [0, 255] range for DCT (matching cv2.dct behavior)
             if channel_images.max() <= 1.0:
@@ -163,8 +164,9 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
             return channel_images
 
         except Exception as e:
-            self.logger.error(f"- _preprocess_images - {e}")
-            raise ValueError(f"Error preprocessing images: {e}")
+            err_msg = f"Error preprocessing images: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
     def _convert_to_luminance(self, images: torch.Tensor) -> torch.Tensor:
         """Convert RGB images to luminance (Y channel from YCbCr).
@@ -208,8 +210,9 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
         num_blocks_w = w // block_size
 
         if num_blocks_h == 0 or num_blocks_w == 0:
-            self.logger.error(f"- _extract_dct_blocks_batch - Images too small ({h}x{w}) for block size {block_size}")
-            raise ValueError(f"Image dimensions {h}x{w} too small for block size {block_size}")
+            err_msg = f"Image too small ({h}x{w}) for block size {block_size}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
         try:
             #truncate images to be divisible by block_size
@@ -232,10 +235,11 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
             dct_blocks = dct_blocks.view(batch_size, num_blocks_h, num_blocks_w, block_size, block_size)
 
         except Exception as e:
-            self.logger.error(f"- _extract_dct_blocks_batch - Error applying DCT: {e}")
-            raise RuntimeError(f"Error extracting DCT blocks: {e}")
+            err_msg = f"Error extracting DCT blocks: {e}"
+            self.logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
-        self.logger.debug(f"- _extract_dct_blocks_batch - Extracted {num_blocks_h * num_blocks_w} DCT blocks per image")
+        self.logger.debug(f"Extracted {num_blocks_h * num_blocks_w} DCT blocks per image")
         return dct_blocks
 
     def _apply_dct2d(self, blocks: torch.Tensor) -> torch.Tensor:
@@ -268,16 +272,21 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
             assert dct_blocks.numel() > 0, "No DCT blocks to aggregate"
 
         except AssertionError as e:
-            self.logger.error(f"- _aggregate_block_features - {e}")
-            raise ValueError(f"Invalid DCT blocks: {e}")
+            err_msg = f"Invalid DCT blocks: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
         match self.aggregation_method:
             case "frequency_bands":
                 return self._frequency_bands_aggregation(dct_blocks)
             case "zigzag":
                 return self._zigzag_aggregation(dct_blocks)
-            case _:  #statistical
+            case "statistical":
                 return self._statistical_aggregation(dct_blocks)
+            case _:
+                err_msg = f"Unknown aggregation method: {self.aggregation_method}"
+                self.logger.error(err_msg)
+                raise ValueError(err_msg)
 
     def _frequency_bands_aggregation(self, dct_blocks: torch.Tensor) -> torch.Tensor:
         """Aggregate DCT blocks by frequency bands.
@@ -339,7 +348,7 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
 
         #high frequency ratio (energy in highest band / total energy)
         total_energy = torch.sum(band_energies, dim=1)
-        high_freq_ratio = band_energies[:, -1] / (total_energy + self.EPSILON)
+        high_freq_ratio = band_energies[:, -1] / (total_energy + self.epsilon)
 
         #histogram of coefficient magnitudes (10 bins) - vectorized
         all_coeffs = blocks_flat.reshape(batch_size, -1)
@@ -360,7 +369,7 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
         hist = one_hot.sum(dim=1)
 
         # Normalize
-        hist = hist / (hist.sum(dim=1, keepdim=True) + self.EPSILON)
+        hist = hist / (hist.sum(dim=1, keepdim=True) + self.epsilon)
 
         #concatenate all features
         features = torch.cat([
@@ -419,7 +428,7 @@ class TorchDCTExtractor(nn.Module, BaseDCTExtractor):
         hist = one_hot.sum(dim=1)
 
         # Normalize
-        hist = hist / (hist.sum(dim=1, keepdim=True) + self.EPSILON)
+        hist = hist / (hist.sum(dim=1, keepdim=True) + self.epsilon)
 
         features = torch.cat([means, hist], dim=1)
         return features

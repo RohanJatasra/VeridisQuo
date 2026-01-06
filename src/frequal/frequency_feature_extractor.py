@@ -3,8 +3,8 @@ from frequal.base_fft_extractor import BaseFFTExtractor
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import Optional, List
-import logging
+from typing import List
+from logging import Logger, getLogger
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from .np_dct_extractor import NpDCTExtractor
@@ -19,31 +19,31 @@ class FrequencyFeatureExtractor(nn.Module):
     """PyTorch module encapsulating combined DCT and FFT frequency feature extraction."""
 
     def __init__(self,
-        fft_feature_dim: int =512,
-        fft_num_radial_bands: int =8,
-        fft_window_function: str ="hann",
-        fft_high_freq_emphasis: bool =True,
-        dct_feature_dim: int =512,
-        dct_block_size: int =8,
-        channel_mode: str ="luminance",
-        dct_aggregation_method: str ="frequency_bands",
-        dct_num_frequency_bands: int =4,
-        fusion_output_dim: Optional[int] =None,
-        fusion_hidden_dims: Optional[List[int]] =None,
-        fusion_dropout_rate: float =0.3,
-        fusion_use_batch_norm: bool =True,
-        path_to_weights: Optional[str] =None,
-        use_gpu_extractors: bool =True,
-        fft_num_azimuthal_sectors: int =8,
-        fft_high_freq_threshold_ratio: float =0.5,
-        fft_artifact_edge_width: int =5,
-        fft_artifact_num_radial_samples: int =50,
-        fft_artifact_center_region_size: int =20,
-        fft_default_smoothing_kernel_size: int =5,
-        fft_energy_band_start_multiplier: int =2,
-        fft_energy_band_end_multiplier: int =3,
-        fft_epsilon: float =1e-10,
-        dct_epsilon: float =1e-10,
+        fft_feature_dim: int,
+        fft_num_radial_bands: int,
+        fft_window_function: str,
+        fft_high_freq_emphasis: bool,
+        dct_feature_dim: int,
+        dct_block_size: int,
+        channel_mode: str,
+        dct_aggregation_method: str,
+        dct_num_frequency_bands: int,
+        fusion_output_dim: int,
+        fusion_hidden_dims: List[int],
+        fusion_dropout_rate: float,
+        fusion_use_batch_norm: bool,
+        path_to_weights: str,
+        use_gpu_extractors: bool,
+        fft_num_azimuthal_sectors: int,
+        fft_high_freq_threshold_ratio: float,
+        fft_artifact_edge_width: int,
+        fft_artifact_num_radial_samples: int,
+        fft_artifact_center_region_size: int,
+        fft_default_smoothing_kernel_size: int,
+        fft_energy_band_start_multiplier: int,
+        fft_energy_band_end_multiplier: int,
+        fft_epsilon: float,
+        dct_epsilon: float,
     ):
         """Initialize FrequencyFeatureExtractor.
         Parameters:
@@ -78,7 +78,7 @@ class FrequencyFeatureExtractor(nn.Module):
         """
         super(FrequencyFeatureExtractor, self).__init__()
 
-        self.logger: logging.Logger = logging.getLogger("frequal.FrequencyFeatureExtractor")
+        self.logger: Logger = getLogger("/".join(__file__.split("/")[-2:]))
         """Logger instance for the FrequencyFeatureExtractor class"""
 
         try:
@@ -88,8 +88,9 @@ class FrequencyFeatureExtractor(nn.Module):
             assert fft_num_radial_bands > 0, f"FFT radial bands must be positive, got {fft_num_radial_bands}"
             
         except AssertionError as e:
-            self.logger.fatal(f"Invalid parameters: {e}")
-            raise ValueError(f"Invalid parameters: {e}")
+            err_msg = f"Invalid parameters: {e}"
+            self.logger.fatal(err_msg)
+            raise ValueError(err_msg)
 
         self.dct_feature_dim: int = dct_feature_dim
         """DCT feature dimension"""
@@ -130,6 +131,7 @@ class FrequencyFeatureExtractor(nn.Module):
                 default_smoothing_kernel_size=fft_default_smoothing_kernel_size,
                 energy_band_start_multiplier=fft_energy_band_start_multiplier,
                 energy_band_end_multiplier=fft_energy_band_end_multiplier,
+                used_image_size=224,
                 epsilon=fft_epsilon
             )
         else:
@@ -180,7 +182,6 @@ class FrequencyFeatureExtractor(nn.Module):
 
     def _initialize_projections(self) -> None:
         """Initialize DCT and FFT projection layers with Xavier initialization.
-
         Xavier initialization is appropriate for projection layers that don't use ReLU activation.
         """
         for extractor in [self.dct_extractor, self.fft_extractor]:
@@ -214,8 +215,9 @@ class FrequencyFeatureExtractor(nn.Module):
             assert x.shape[2] == 224 and x.shape[3] == 224, f"Input must be 224x224, got {x.shape[2]}x{x.shape[3]}"
 
         except AssertionError as e:
-            self.logger.error(f"- forward - {e}")
-            raise ValueError(f"Invalid input shape: {e}")
+            err_msg = f"Invalid input shape: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
         if self.use_gpu_extractors:
             #use PyTorch extractors directly on GPU tensors
@@ -249,7 +251,7 @@ class FrequencyFeatureExtractor(nn.Module):
         #fuse features using MLP
         fused_features = self.fusion_mlp(combined_tensor)
 
-        self.logger.debug(f"- forward - Extracted frequency features with shape {fused_features.shape} (parallel={parallelize})")
+        self.logger.debug(f"Extracted frequency features with shape {fused_features.shape} (parallel={parallelize})")
 
         return fused_features
 
@@ -273,11 +275,12 @@ class FrequencyFeatureExtractor(nn.Module):
             }
 
             torch.save(state_dict, path_obj)
-            self.logger.info(f"- save_weights - Saved weights to {path_obj}")
+            self.logger.info(f"Saved weights to {path_obj}")
 
         except Exception as e:
-            self.logger.error(f"- save_weights - Error saving weights: {e}")
-            raise RuntimeError(f"Error saving weights: {e}")
+            err_msg = f"Error saving weights: {e}"
+            self.logger.error(f"{err_msg}")
+            raise RuntimeError(err_msg)
 
     def load_weights(self, input_path: str) -> None:
         """Load pretrained MLP weights from disk.
@@ -292,8 +295,9 @@ class FrequencyFeatureExtractor(nn.Module):
             assert path.exists(), f"Weights file does not exist: {input_path}"
 
         except AssertionError as e:
-            self.logger.error(f"- load_weights - {e}")
-            raise ValueError(f"Invalid parameter: {e}")
+            err_msg = f"Invalid parameter: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
 
         try:
             state_dict: dict[str, torch.Tensor] = torch.load(path, map_location='cpu')
@@ -302,7 +306,7 @@ class FrequencyFeatureExtractor(nn.Module):
             if 'fusion_mlp' in state_dict:
                 self.fusion_mlp.load_state_dict(state_dict['fusion_mlp'])
             elif 'fusion_projection' in state_dict:
-                self.logger.warning("- load_weights - Loading old 'fusion_projection' weights. Consider resaving with new format.")
+                self.logger.warning("Loading old 'fusion_projection' weights. Consider resaving with new format.")
                 #attempt to load old linear projection into first layer of MLP if compatible
                 try:
                     old_weights = state_dict['fusion_projection']
@@ -311,9 +315,9 @@ class FrequencyFeatureExtractor(nn.Module):
                     if isinstance(first_linear, nn.Linear):
                         if first_linear.weight.shape == old_weights['weight'].shape:
                             first_linear.load_state_dict(old_weights)
-                            self.logger.info("- load_weights - Successfully loaded old projection weights into MLP first layer")
+                            self.logger.info("Successfully loaded old projection weights into MLP first layer")
                 except Exception as e:
-                    self.logger.warning(f"- load_weights - Could not load old projection weights: {e}")
+                    self.logger.warning(f"Could not load old projection weights: {e}")
 
             if 'dct_projection' in state_dict:
                 self.dct_extractor.projection.load_state_dict(state_dict['dct_projection'])
@@ -321,8 +325,9 @@ class FrequencyFeatureExtractor(nn.Module):
             if 'fft_projection' in state_dict:
                 self.fft_extractor.projection.load_state_dict(state_dict['fft_projection'])
 
-            self.logger.info(f"- load_weights - Loaded weights from {path}")
+            self.logger.info(f"Loaded weights from {path}")
 
         except Exception as e:
-            self.logger.error(f"- load_weights - Error loading weights: {e}")
-            raise RuntimeError(f"Error loading weights: {e}")
+            err_msg = f"Error loading weights: {e}"
+            self.logger.error(err_msg)
+            raise RuntimeError(err_msg)

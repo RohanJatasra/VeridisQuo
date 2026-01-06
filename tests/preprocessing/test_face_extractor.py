@@ -38,8 +38,8 @@ class TestFaceExtractorInit:
         with pytest.raises(ValueError, match="Invalid parameters"):
             FaceExtractor(padding=-0.1)
 
-    def test_init_with_invalid_padding_negative(self):
-        """Test initialization with negative padding raises ValueError."""
+    def test_init_with_invalid_padding_large_negative(self):
+        """Test initialization with large negative padding raises ValueError."""
         with pytest.raises(ValueError, match="Invalid parameters"):
             FaceExtractor(padding=-10)
 

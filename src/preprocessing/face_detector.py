@@ -1,25 +1,22 @@
 import numpy as np
 import cv2
 from typing import List, Dict, Any, Optional, Union
-import logging
+from logging import getLogger, Logger
 from ultralytics import YOLO
 from pathlib import Path
-from config import FACE_DETECTION_MODEL_PATH
 
 
 class FaceDetector:
     """Detect faces in images using YOLO."""
 
-    def __init__(
-        self,
-        model_path: Optional[str] = None,
-        min_face_size: int = 40,
-        confidence_threshold: float = 0.7,
-        only_keep_top: bool = True,
-        device: Union[str, int] = "cpu"
+    def __init__(self,
+        model_path: str,
+        min_face_size: int,
+        confidence_threshold: float,
+        only_keep_top: bool,
+        device: Union[str, int]
     ):
         """Initializes the YOLO face detector.
-
         Parameters:
             model_path (Optional[str]): path to the YOLO face detection model.
                                        If None, uses the default path from config.
@@ -27,7 +24,6 @@ class FaceDetector:
             confidence_threshold (float): minimum confidence score to accept detection
             only_keep_top (bool): if True and multiple faces detected, keep only the highest confidence one
             device (Union[str, int]): device to run inference on. Can be 'cpu', 'cuda', or GPU index (0, 1, etc.)
-
         Raises:
             Exception: if YOLO model initialization fails or model file not found
         """
@@ -39,37 +35,31 @@ class FaceDetector:
         """If True and multiple faces detected, keep only the highest confidence one"""
         self.device: Union[str, int] = device
         """Device to run inference on (cpu, cuda, or GPU index)"""
-        self.logger: logging.Logger = logging.getLogger("preprocessing.FaceDetector")
+        self.logger: Logger = getLogger("/".join(__file__.split("/")[-2:]))
         """Logger for the FaceDetector class"""
 
         try:
-            # Use default path from config if none provided
-            if model_path is None:
-                model_path = str(FACE_DETECTION_MODEL_PATH)
-
-            # Check if model file exists
             model_file = Path(model_path)
-            if not model_file.exists():
-                raise FileNotFoundError(f"YOLO model not found at: {model_path}")
+            
+            assert model_file.exists(), f"YOLO model file does not exist at: {model_path}"
 
-            # Load YOLO model
             self.detector: YOLO = YOLO(model_path)
             """YOLO face detector instance"""
 
-            # Move model to specified device
             self.detector.to(device)
 
             self.logger.info(f"YOLO face detector initialized successfully from {model_path} on device: {device}")
 
+        except AssertionError as e:
+            err_msg = f"YOLO model initialization error: {e}"
+            self.logger.fatal(err_msg)
+            raise ValueError(err_msg)
+        
         except Exception as e:
             self.logger.fatal(f"Failed to initialize YOLO face detector: {e}")
             raise
 
-    def _process_single_result(
-        self,
-        result,
-        return_landmarks: bool = False
-    ) -> List[Dict[str, Any]]:
+    def _process_single_result(self, result, return_landmarks: bool =False) -> List[Dict[str, Any]]:
         """Process a single YOLO result object into detection dictionaries.
         Parameters:
             result: YOLO result object for one image
@@ -77,7 +67,11 @@ class FaceDetector:
         Returns:
             List[Dict[str, Any]]: list of detection dictionaries for this image
         """
-        if result.boxes is None or len(result.boxes) == 0:
+        try:
+            assert result and (not result.boxes or len(result.boxes) >= 0), "Invalid YOLO result object"
+        
+        except AssertionError as e:
+            self.logger.error(f"Invalid YOLO result object: {e}")
             return []
 
         detections = []
@@ -111,6 +105,7 @@ class FaceDetector:
             detections.append(detection)
 
         if not detections:
+            self.logger.debug("No valid detections after filtering by confidence and size")
             return []
 
         #sort by confidence (highest first)
@@ -122,11 +117,7 @@ class FaceDetector:
 
         return detections
 
-    def detect_faces_batch(
-        self,
-        images: List[np.ndarray],
-        return_landmarks: bool = False
-    ) -> List[List[Dict[str, Any]]]:
+    def detect_faces_batch(self, images: List[np.ndarray], return_landmarks: bool =False) -> List[List[Dict[str, Any]]]:
         """Detect faces in multiple images with a single YOLO forward pass (batched).
         Parameters:
             images (List[np.ndarray]): list of images as numpy arrays (BGR format)
@@ -136,8 +127,14 @@ class FaceDetector:
         Raises:
             ValueError: if images list is empty or contains invalid images
         """
-        if not images:
-            raise ValueError("images list cannot be empty")
+        try:
+            assert images, "Images list cannot be empty"
+            assert all(isinstance(img, np.ndarray) and img.size > 0 for img in images), "All images must be valid numpy arrays"
+            
+        except AssertionError as e:
+            error_msg = f"Invalid images provided for batch face detection: {e}"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
 
         try:
             #run YOLO inference on batch (single forward pass!)
@@ -162,30 +159,28 @@ class FaceDetector:
             self.logger.error(f"Batch face detection failed: {e}")
             return [[] for _ in images]
 
-    def detect_faces(
-        self,
-        image: np.ndarray,
-        return_landmarks: bool = False
-    ) -> List[Dict[str, Any]]:
+    def detect_faces(self, image: np.ndarray, return_landmarks: bool =False) -> List[Dict[str, Any]]:
         """Detect faces in an image using YOLO.
-
         Parameters:
             image (np.ndarray): input image as numpy array (BGR format)
             return_landmarks (bool): whether to include facial landmarks in results (not supported with YOLO)
-
         Returns:
             List[Dict[str, Any]]: list of detection dictionaries, each containing:
             - bbox: bounding box as [x, y, width, height]
             - confidence: detection confidence score
             - keypoints: facial landmarks (empty dict if return_landmarks=True, as YOLO doesn't provide landmarks)
-
         Raises:
             ValueError: if image is invalid
         """
         #validate input image
-        if image is None or not isinstance(image, np.ndarray) or image.size == 0:
-            self.logger.error("Invalid image provided for face detection")
-            raise ValueError("Invalid image: must be a non-empty numpy array")
+        try:
+            assert isinstance(image, np.ndarray), "Image must be a numpy array"
+            assert image.size > 0, "Image array is empty"
+            
+        except AssertionError as e:
+            error_msg = f"Invalid image provided for face detection: {e}"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
 
         try:
             #run YOLO inference
@@ -212,23 +207,16 @@ class FaceDetector:
             self.logger.error(f"Face detection failed: {e}")
             return []
 
-    def detect_single_face(
-        self,
-        image: np.ndarray,
-        return_landmarks: bool = False
-    ) -> Optional[Dict[str, Any]]:
+    def detect_single_face(self, image: np.ndarray, return_landmarks: bool =False) -> Optional[Dict[str, Any]]:
         """Detect a single face in an image (returns the one with the highest confidence score).
-
         Parameters:
             image (np.ndarray): input image as numpy array
             return_landmarks (bool): whether to include facial landmarks in result (not supported with YOLO)
-
         Returns:
             Optional[Dict[str, Any]]: None if no face found or dictionary containing:
             - bbox: bounding box as [x, y, width, height]
             - confidence: detection confidence score
             - keypoints: facial landmarks (empty dict if return_landmarks=True)
-
         Raises:
             ValueError: if provided image is invalid
         """
