@@ -86,7 +86,7 @@ def single_sample_concatenated():
 
 @pytest.fixture
 def labels_binary():
-    """Create binary labels for classification (REAL=0, FAKE=1).
+    """Create binary labels for classification (FAKE=0, REAL=1).
 
     Returns:
         torch.Tensor: Labels [batch] with values 0 or 1

@@ -149,6 +149,40 @@ class InferenceEngine:
             self.logger.error(error_msg)
             raise RuntimeError(error_msg)
 
+    def _download_face_detection_model(self, model_path: Path) -> None:
+        """Download face detection model from Hugging Face.
+
+        Parameters:
+            model_path: Path where the model should be saved
+
+        Raises:
+            RuntimeError: if download fails
+        """
+        try:
+            self.logger.info(f"Downloading face detection model from {FACE_DETECTION_HF_URL}...")
+
+            # Create parent directory if needed
+            model_path.parent.mkdir(parents=True, exist_ok=True)
+
+            def _progress_hook(count: int, block_size: int, total_size: int) -> None:
+                """Progress callback for model download."""
+                percent = int(count * block_size * 100 / total_size)
+                if count % 100 == 0:
+                    self.logger.info(f"Download progress: {percent}%")
+
+            urllib.request.urlretrieve(
+                FACE_DETECTION_HF_URL,
+                model_path,
+                reporthook=_progress_hook
+            )
+
+            self.logger.info(f"Face detection model downloaded successfully to {model_path}")
+
+        except Exception as e:
+            error_msg = f"Failed to download face detection model from Hugging Face: {e}"
+            self.logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
     def _load_weights(self) -> None:
         """Load pretrained weights into the model.
         Raises:

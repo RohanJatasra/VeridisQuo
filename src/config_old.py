@@ -27,7 +27,11 @@ LOG_FILE: Path = LOGS_DIR / "app.log"
 LOG_DATEFMT: str = "%Y-%m-%d %H:%M:%S"
 
 # Face detection model
-FACE_DETECTION_MODEL_PATH: Path = PROJECT_ROOT / "models" / "face_detection" / "face_detection.pt"
+FACE_DETECTION_MODEL_DIR: Path = PROJECT_ROOT / "models" / "face_detection"
+FACE_DETECTION_MODEL_PATH: Path = FACE_DETECTION_MODEL_DIR / "model.pt"
+FACE_DETECTION_HF_REPO_ID: str = "AdamCodd/YOLOv11n-face-detection"
+FACE_DETECTION_MODEL_FILENAME: str = "model.pt"
+FACE_DETECTION_HF_URL: str = f"https://huggingface.co/{FACE_DETECTION_HF_REPO_ID}/resolve/main/{FACE_DETECTION_MODEL_FILENAME}"
 
 # Deepfake detection model
 DEEPFAKE_DETECTION_MODEL_DIR: Path = PROJECT_ROOT / "models" / "deepfake_detection"

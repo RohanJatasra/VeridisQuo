@@ -108,7 +108,7 @@ loss:
   label_smoothing: 0.0
 
   # Class configuration
-  num_classes: 2  # Implemented: 0=FAKE, 1=REAL
+  num_classes: 2  # Label mapping: FAKE=0, REAL=1
 
 model_architecture:
   # DeepFakeDetector model architecture parameters
