@@ -9,7 +9,7 @@ import logging
 from multiprocessing import cpu_count
 from typing import Tuple
 
-from core.csv_schemas import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit, PreprocessCSVItem
+from utils import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit, PreprocessCSVItem, PreprocessingConfig, DataLoaderConfig
 from dataset_builder.face_forensic import FaceForensicDataset
 from dataset_builder.frame_dataset_builder import FrameDatasetBuilder
 from dataset_builder.face_dataset_builder import FaceDatasetBuilder
@@ -18,25 +18,6 @@ from dataset_builder.dataset_splitter import DatasetSplitter
 from utils.csv_services import CSVService
 import shutil
 from pathlib import Path
-
-
-@dataclass
-class ProcessingConfig:
-    """Configuration for face detection and extraction."""
-
-    # Frame extraction
-    frames_per_second: int
-
-    # Face detection
-    min_face_size: int
-    confidence_threshold: float
-    only_keep_top_face: bool
-
-    # Face extraction
-    face_target_size: Tuple[int, int]
-    face_normalization: str 
-    face_padding: int # pixels to add around face bbox
-
 
 class DatasetBuilder:
     """
@@ -49,58 +30,25 @@ class DatasetBuilder:
     dataset preprocessing pipeline.
     """
     
-    def __init__(self,
-        num_workers: Optional[int],
-        device: str,
-        frame_per_second: int,
-        min_face_size: int,
-        confidence_threshold: float,
-        only_keep_top_face: bool,
-        face_target_size: Tuple[int, int],
-        face_normalization: str,
-        face_padding: int,
-        csv_folder: str,
-        data_folder: str,
-        frame_dir: str,
-        faces_dir: str
-    ):
+    def __init__(self, config: DataLoaderConfig) -> None:
         """
         Initialize DatasetBuilder.
-
         Args:
-            mode: Dataset mode - 'train' or 'test'
-            num_workers: Number of parallel workers. Defaults to CPU count.
-            config: Processing configuration. Defaults to ProcessingConfig().
-            device: Device to use for face detection (cpu or cuda)
-
+            config: PreprocessingConfig object with all necessary parameters
         Raises:
             ValueError: If mode is not 'train' or 'test'
         """
         self.logger: logging.Logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
-
-        self.num_workers: int = num_workers if num_workers is not None else cpu_count()
-        self.device: str = device
-
-        self.config: ProcessingConfig = ProcessingConfig(
-            frames_per_second=frame_per_second,
-            min_face_size=min_face_size,
-            confidence_threshold=confidence_threshold,
-            only_keep_top_face=only_keep_top_face,
-            face_target_size=face_target_size,
-            face_normalization=face_normalization,
-            face_padding=face_padding
-        )
+        self.config: DataLoaderConfig = config
         
-        self.csv_folder = csv_folder
-        self.data_folder = data_folder
-        self.frame_dir = frame_dir
-        self.faces_dir = faces_dir
+        if self.config.num_workers is None:
+            self.config.num_workers = cpu_count()
 
         # Initialize dataset and logger
-        self.dataset = FaceForensicDataset(self.csv_folder)
+        self.dataset = FaceForensicDataset(self.config.csv_folder)
         self.videos_path: Dict[str, List[CSVItem]] = self.dataset.load_all_csvs()
 
-        self.logger.info(f"Initialized DatasetBuilder with {self.num_workers} workers")
+        self.logger.info(f"Initialized DatasetBuilder with {self.config.num_workers} workers")
 
         # Initialize sub-builders (lazy initialization)
         self._frame_builder: Optional[FrameDatasetBuilder] = None
@@ -111,12 +59,12 @@ class DatasetBuilder:
         """Get or create FrameDatasetBuilder instance."""
         if self._frame_builder is None:
             self._frame_builder = FrameDatasetBuilder(
-                data_folder=self.data_folder,
-                frame_dir=self.frame_dir,
+                data_folder=self.config.data_folder,
+                frame_dir=self.config.frames_dir,
                 videos_path=self.videos_path,
-                num_workers=self.num_workers,
-                fps=self.config.frames_per_second,
-                device=self.device,
+                num_workers=self.config.num_workers,
+                fps=self.config.preprocessing_config.frames_per_second,
+                device=self.config.device,
                 batch_size=32,
                 num_save_threads=4
             )
@@ -127,16 +75,16 @@ class DatasetBuilder:
         """Get or create FaceDatasetBuilder instance."""
         if self._face_builder is None:
             self._face_builder = FaceDatasetBuilder(
-                frame_dir=self.frame_dir,
-                faces_dir=self.faces_dir,
-                num_workers=self.num_workers,
-                min_face_size=self.config.min_face_size,
-                confidence_threshold=self.config.confidence_threshold,
-                only_keep_top_face=self.config.only_keep_top_face,
-                face_target_size=self.config.face_target_size,
-                face_normalization=self.config.face_normalization,
-                face_padding=self.config.face_padding,
-                device=self.device
+                frame_dir=self.config.frames_dir,
+                faces_dir=self.config.faces_dir,
+                num_workers=self.config.num_workers,
+                min_face_size=self.config.preprocessing_config.min_face_size,
+                confidence_threshold=self.config.preprocessing_config.confidence_threshold,
+                only_keep_top_face=self.config.preprocessing_config.only_keep_top_face,
+                face_target_size=self.config.preprocessing_config.face_target_size,
+                face_normalization=self.config.preprocessing_config.face_normalization,
+                face_padding=self.config.preprocessing_config.face_padding,
+                device=self.config.device
             )
         return self._face_builder
 
@@ -314,7 +262,7 @@ class DatasetBuilder:
             for item in items:
                 # Reconstruct absolute path from relative path
                 # item.Face_Path is relative to faces_dir
-                source_path = Path(self.faces_dir) / item.Face_Path
+                source_path = Path(self.config.faces_dir) / item.Face_Path
                 if source_path.exists():
                     # Generate unique filename to handle duplicates
                     base_name = source_path.stem

@@ -6,7 +6,8 @@ from typing import Union, List, Optional, Tuple, Dict, Any
 import urllib.request
 import cv2
 import numpy as np
-from core import InferenceConfig, DeepFakeDetector, ModelArchitectureConfig
+from utils import InferenceConfig, ModelArchitectureConfig
+from core import DeepFakeDetector
 from preprocessing import FaceDetector, FaceExtractor
 from preprocessing import BaseFramesExtractor
 from torchvision import transforms
@@ -930,13 +931,15 @@ class InferenceEngine:
             self.logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
-    def predict_video_batch(
-        self,
+    def predict_video_batch(self,
         video_paths: List[Union[str, Path]],
-        frames_per_second: Optional[int] = 1,
-        aggregation_method: str = "majority",
-        use_pyav_extractor: bool = True,
-        batch_size: int = 8
+        frames_per_second: Optional[int],
+        aggregation_method: str,
+        use_pyav_extractor: bool,
+        batch_size: int,
+        enable_gradcam: bool,
+        gradcam_output_path: Optional[Union[str, Path]],
+        gradcam_alpha: float
     ) -> List[VideoInferenceResult]:
         """Run inference on a batch of videos.
         Parameters:
@@ -969,7 +972,10 @@ class InferenceEngine:
                     frames_per_second=frames_per_second,
                     aggregation_method=aggregation_method,
                     use_pyav_extractor=use_pyav_extractor,
-                    batch_size=batch_size
+                    batch_size=batch_size,
+                    enable_gradcam=enable_gradcam,
+                    gradcam_output_path=gradcam_output_path,
+                    gradcam_alpha=gradcam_alpha
                 )
                 results.append(result)
 
