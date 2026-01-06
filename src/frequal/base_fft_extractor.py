@@ -27,7 +27,8 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
         artifact_center_region_size: int,
         energy_band_start_multiplier: int,
         energy_band_end_multiplier: int,
-        epsilon: float
+        epsilon: float,
+        default_smoothing_kernel_size: int = 5
     ):
         """Initialize BaseFFTExtractor.
         Parameters:
@@ -45,6 +46,7 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
             energy_band_start_multiplier (int): multiplier for energy band start index
             energy_band_end_multiplier (int): multiplier for energy band end index
             epsilon (float): small constant for numerical stability
+            default_smoothing_kernel_size (int): default kernel size for spectrum smoothing (default: 5)
         Raises:
             ValueError: if parameters are invalid
         """
@@ -60,6 +62,7 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
             assert num_azimuthal_sectors > 0, "Number of azimuthal sectors must be positive"
             assert 0 < high_freq_threshold_ratio < 1, "High frequency threshold ratio must be in (0, 1)"
             assert epsilon > 0, "Epsilon must be positive"
+            assert default_smoothing_kernel_size > 0, "Smoothing kernel size must be positive"
 
         except AssertionError as e:
             self.logger.fatal(f"Invalid parameters: {e}")
@@ -87,7 +90,9 @@ class BaseFFTExtractor(BaseFrequencyExtractor):
         """Multiplier for energy band end index"""
         self.epsilon: float = epsilon
         """Small constant for numerical stability"""
-        
+        self.default_smoothing_kernel_size: int = default_smoothing_kernel_size
+        """Default kernel size for spectrum smoothing"""
+
         self._num_raw_features: int = self._calculate_raw_feature_dim()
 
         self.projection: nn.Linear = nn.Linear(self._num_raw_features, feature_dim)

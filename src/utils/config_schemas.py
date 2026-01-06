@@ -37,7 +37,7 @@ class FrequencyFeatureConfig:
     """Number of frequency bands for DCT features."""
     fusion_output_dim: int
     """Output dimensionality of the frequency feature fusion module."""
-    fusion_hidden_dims: Optional[list[int]] =None
+    fusion_hidden_dims: Optional[list[int]]
     """Hidden layer dimensions for the fusion MLP."""
     fusion_dropout_rate: float
     """Dropout rate for the fusion MLP."""
@@ -65,6 +65,8 @@ class FrequencyFeatureConfig:
     """Small constant to avoid division by zero in FFT computations."""
     dct_epsilon: float
     """Small constant to avoid division by zero in DCT computations."""
+    fft_default_smoothing_kernel_size: int
+    """Default smoothing kernel size for FFT features."""
 
 @dataclass
 class ClassifierConfig:
@@ -73,7 +75,7 @@ class ClassifierConfig:
     """Input feature dimension for the classifier."""
     num_classes: int
     """Number of output classes (e.g., 2 for REAL/FAKE)."""
-    hidden_dims: Optional[list[int]] =None
+    hidden_dims: Optional[list[int]]
     """Hidden layer dimensions for the classifier MLP."""
     dropout_rate: float
     """Dropout rate for regularization in the classifier."""
@@ -135,24 +137,20 @@ class InferenceConfig:
     """Directory path where the model weights are stored."""
     model_name: str
     """Filename of the model weights."""
-    auto_download_model: Optional[bool] =True
-    """Whether to automatically download the model if not found locally."""
-    hf_model_url: Optional[str] =None
-    """Hugging Face URL to download the model from."""
-    
     model_config: ModelArchitectureConfig
     """Stores deepfake detection model parameters, for each submodule."""
-    
     face_detection_config: FaceDetectionConfig
     """Stores face detection model parameters."""
-    
     face_extraction_config: FaceExtractionConfig
     """Stores face extraction parameters."""
-    
     imagenet_mean: list[float]
     """ImageNet mean for input normalization."""
     imagenet_std: list[float]
     """ImageNet standard deviation for input normalization."""
+    auto_download_model: Optional[bool] =True
+    """Whether to automatically download the model if not found locally."""
+    hf_model_url: Optional[str] =None
+    """Hugging Face URL to download the model from."""
     
 @dataclass
 class TrainingConfig:
@@ -208,10 +206,10 @@ class TrainingConfig:
 
     wandb_project: str
     """Weights & Biases project name."""
-    wandb_entity: Optional[str] =None
-    """Weights & Biases entity name (team/user)."""
     use_wandb: bool
     """Whether to enable Weights & Biases logging."""
+    wandb_entity: Optional[str] =None
+    """Weights & Biases entity name (team/user)."""
    
 @dataclass
 class PreprocessingConfig:
@@ -234,8 +232,6 @@ class PreprocessingConfig:
 @dataclass
 class DataLoaderConfig:
     """Dataclass storing dataloader parameters."""
-    num_workers: Optional[int] =None
-    """Number of worker threads for data loading."""
     device: str
     """Device for data loading (e.g., 'cpu' or 'cuda')."""
     preprocessing_config: PreprocessingConfig
@@ -247,5 +243,7 @@ class DataLoaderConfig:
     """Path to folder for storing extracted frames."""
     faces_dir: str
     """Path to folder for storing extracted face images."""
+    num_workers: Optional[int] =None
+    """Number of worker threads for data loading."""
  
     

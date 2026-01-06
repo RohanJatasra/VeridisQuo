@@ -3,9 +3,8 @@ import torch
 from spatial import EfficientNetFeatureExtractor
 from frequal import FrequencyFeatureExtractor
 from classification import FaceFeaturesConcatenator, FaceClassifier
-from inference import ScoreAggregator, AggregatedScore
 from logging import Logger, getLogger
-from core import ModelArchitectureConfig
+from utils import ModelArchitectureConfig
 
 class DeepFakeDetector(nn.Module):
     """Deepfake detection model combining spatial and frequency analysis."""
@@ -33,7 +32,7 @@ class DeepFakeDetector(nn.Module):
         """Model architecture configuration"""
 
         self.efficient: EfficientNetFeatureExtractor = EfficientNetFeatureExtractor(
-            effnet_pretrained=self.config.spatial_features.effnet_pretrained,
+            pretrained=self.config.spatial_features.effnet_pretrained,
             path_to_weights=self.config.spatial_features.path_to_weights
         )
         """EfficientNet-B4 feature extractor for spatial analysis"""
@@ -82,9 +81,6 @@ class DeepFakeDetector(nn.Module):
             path_to_weights=config.classifier.path_to_weights
         )
         """Face classifier taking concatenated features and outputting logits"""
-
-        self.aggregator: ScoreAggregator = ScoreAggregator(self.config.score_aggregation_method)
-        """ScoreAggregator for aggregating frame-level predictions"""
 
     def forward(self, x_image: torch.Tensor) -> torch.Tensor:
         """Forward pass through the deepfake detection model.

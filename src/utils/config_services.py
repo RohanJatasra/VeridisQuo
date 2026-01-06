@@ -132,11 +132,33 @@ class ConfigService(Dict[str, Any]):
             Dict[str, Any]: saved configuration dictionary
         """
         self.logger.info("Retrieved internally saved configuration.")
-        return self.saved_config
+        return dict(self)
     
-    def validate_config(self, config: Dict[str, Any], required_keys: Dict[str, Any]) -> bool:
-        """TODO: Implement configuration validation logic."""
-        pass
+    def validate_config(self, config: Dict[str, Any], required_keys: Dict[str, type]) -> bool:
+        """Validate configuration against required keys and their expected types.
+        Parameters:
+            config (Dict[str, Any]): configuration dictionary to validate
+            required_keys (Dict[str, type]): dictionary mapping required key names to their expected types
+        Returns:
+            bool: True if validation passes
+        Raises:
+            ValueError: if validation fails (missing keys or incorrect types)
+        """
+        try:
+            for key, expected_type in required_keys.items():
+                assert key in config, f"Missing required configuration key: {key}"
+                if expected_type is not None:
+                    actual_value = config[key]
+                    assert isinstance(actual_value, expected_type), (
+                        f"Invalid type for key '{key}': expected {expected_type.__name__}, "
+                        f"got {type(actual_value).__name__}"
+                    )
+            self.logger.info("Configuration validation passed.")
+            return True
+        except AssertionError as e:
+            err_msg = f"Configuration validation failed: {e}"
+            self.logger.error(err_msg)
+            raise ValueError(err_msg) from e
     
     def extract_inference_config(self) -> InferenceConfig:
         """Extract params set for inference from the internally saved configuration.
@@ -352,6 +374,7 @@ class ConfigService(Dict[str, Any]):
             params_set['fft_energy_band_end_multiplier'] = self.get("model_architecture").get("frequency_features").get("fft").get("constants").get("energy_band_end_multiplier")
             params_set['fft_epsilon'] = self.get("model_architecture").get("frequency_features").get("fft").get("epsilon")
             params_set['dct_epsilon'] = self.get("model_architecture").get("frequency_features").get("dct").get("epsilon")
+            params_set['fft_default_smoothing_kernel_size'] = self.get("model_architecture").get("frequency_features").get("fft").get("constants").get("default_smoothing_kernel_size")
             
             return FrequencyFeatureConfig(**params_set)
         

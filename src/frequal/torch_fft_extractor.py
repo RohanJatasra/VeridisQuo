@@ -594,7 +594,7 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
         high_freq_variance = torch.var(center_region, dim=[1, 2])
 
         #spectral irregularity
-        smoothed = self._smooth_spectrum(magnitude_spectrum)
+        smoothed = self._smooth_spectrum(magnitude_spectrum, self.default_smoothing_kernel_size)
         irregularity = torch.mean(torch.abs(magnitude_spectrum - smoothed), dim=[1, 2])
 
         features = torch.stack([
@@ -637,7 +637,7 @@ class TorchFFTExtractor(nn.Module, BaseFFTExtractor):
 
         #band energies from radial features [means, variances, energies, peaks, profile]
         num_bands = self.num_radial_bands
-        energies = radial_features[:, num_bands * self.energy_band_start_multiplier: num_bands * self.energy_band_end_multiplier]
+        energies = radial_features[:, int(num_bands * self.energy_band_start_multiplier): int(num_bands * self.energy_band_end_multiplier)]
 
         if num_bands < 2:
             return torch.zeros(batch_size, 5, device=device)

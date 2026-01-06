@@ -1,9 +1,7 @@
 from typing import List, Tuple, Dict, Any, Callable, Union
 from dataclasses import dataclass
 import logging
-
 from inference import InferenceResult
-
 
 @dataclass
 class AggregatedScore:
@@ -313,7 +311,7 @@ class ScoreAggregator:
         return prediction, confidence, metadata
 
     @staticmethod
-    def compare_methods(cls,
+    def compare_methods(
         frame_results: List[InferenceResult],
         methods: List[str] = None
     ) -> Dict[str, AggregatedScore]:

@@ -22,7 +22,8 @@ class NpFFTExtractor(BaseFFTExtractor):
         artifact_center_region_size: int,
         energy_band_start_multiplier: int,
         energy_band_end_multiplier: int,
-        epsilon: float = 1e-10
+        epsilon: float = 1e-10,
+        default_smoothing_kernel_size: int = 5
     ):
         """Initialize NpFFTExtractor.
         Parameters:
@@ -39,6 +40,7 @@ class NpFFTExtractor(BaseFFTExtractor):
             energy_band_start_multiplier (int): multiplier for energy band start index
             energy_band_end_multiplier (int): multiplier for energy band end index
             epsilon (float): small constant for numerical stability
+            default_smoothing_kernel_size (int): default kernel size for spectrum smoothing
         Raises:
             ValueError: if parameters are invalid
         """
@@ -56,7 +58,8 @@ class NpFFTExtractor(BaseFFTExtractor):
             artifact_center_region_size=artifact_center_region_size,
             energy_band_start_multiplier=energy_band_start_multiplier,
             energy_band_end_multiplier=energy_band_end_multiplier,
-            epsilon=epsilon
+            epsilon=epsilon,
+            default_smoothing_kernel_size=default_smoothing_kernel_size
         )
 
         self.logger.info("FFTExtractor initialized successfully.")
@@ -408,7 +411,8 @@ class NpFFTExtractor(BaseFFTExtractor):
         )
 
         #spectral irregularity
-        smoothed = self._smooth_spectrum(magnitude_spectrum)
+        kernel_size = getattr(self, 'default_smoothing_kernel_size', 5)
+        smoothed = self._smooth_spectrum(magnitude_spectrum, kernel_size)
         irregularity = np.mean(np.abs(magnitude_spectrum - smoothed))
 
         features = np.array([
@@ -453,7 +457,7 @@ class NpFFTExtractor(BaseFFTExtractor):
         """
         #band energies from radial features [means, variances, energies, peaks, profile]
         num_bands = self.num_radial_bands
-        energies = radial_features[num_bands * self.energy_band_start_multiplier: num_bands * self.energy_band_end_multiplier]
+        energies = radial_features[int(num_bands * self.energy_band_start_multiplier): int(num_bands * self.energy_band_end_multiplier)]
 
         if len(energies) < 2:
             return np.zeros(5, dtype=np.float32)

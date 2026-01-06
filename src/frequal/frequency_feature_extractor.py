@@ -131,6 +131,7 @@ class FrequencyFeatureExtractor(nn.Module):
                 default_smoothing_kernel_size=fft_default_smoothing_kernel_size,
                 energy_band_start_multiplier=fft_energy_band_start_multiplier,
                 energy_band_end_multiplier=fft_energy_band_end_multiplier,
+                used_image_size=224,
                 epsilon=fft_epsilon
             )
         else:

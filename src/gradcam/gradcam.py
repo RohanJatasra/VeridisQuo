@@ -310,6 +310,10 @@ class GradCAMVisualizer:
         return visualization
 
 
-class GradCam:
-    """Alias for backward compatibility."""
+class GradCam(GradCAM):
+    """Alias for GradCAM for backward compatibility.
+
+    Deprecated: Use GradCAM instead. This alias exists only to maintain
+    compatibility with older code that used the lowercase naming convention.
+    """
     pass

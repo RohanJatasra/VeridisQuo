@@ -76,6 +76,7 @@ model_architecture:
         artifact_edge_width: 5
         energy_band_start_multiplier: 2
         energy_band_end_multiplier: 3
+        default_smoothing_kernel_size: 5
 
     dct:
       # Discrete Cosine Transform parameters

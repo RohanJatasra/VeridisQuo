@@ -6,12 +6,11 @@ from typing import Union, List, Optional, Tuple, Dict, Any
 import urllib.request
 import cv2
 import numpy as np
-from utils import InferenceConfig, ModelArchitectureConfig
+from utils import InferenceConfig
 from core import DeepFakeDetector
-from preprocessing import FaceDetector, FaceExtractor
-from preprocessing import BaseFramesExtractor
+from preprocessing import FaceDetector, FaceExtractor, BaseFramesExtractor
 from torchvision import transforms
-from inference import InferenceResult, VideoInferenceResult, ScoreAggregator, BatchPrefetcher
+from inference import InferenceResult, VideoInferenceResult, BatchPrefetcher, ScoreAggregator
 from gradcam import GradCAM, GradCAMVisualizer
 
 
@@ -759,10 +758,10 @@ class InferenceEngine:
             self.logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
-    def predict_image(self, image: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Run inference on a single image.
+    def _predict_image_array(self, image: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Private method: run inference on a numpy image array.
         Parameters:
-            image (np.ndarray): Image array [H, W, 3] in BGR format
+            image (np.ndarray): image array [H, W, 3] in BGR format
         Returns:
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: (logits, probabilities, prediction)
                 - logits: [1, 2] on GPU
@@ -790,25 +789,32 @@ class InferenceEngine:
             self.logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
-    def predict_image(self, image: Union[str, Path]) -> InferenceResult:
+    def predict_image(self, image: Union[str, Path, np.ndarray]) -> InferenceResult:
         """Run inference on a single image.
         Parameters:
-            image (str or Path): Path to the image file
+            image (str, Path, or np.ndarray): image file path or image array [H, W, 3] in BGR format
         Returns:
-            InferenceResult: Prediction result with confidence and probabilities.
+            InferenceResult: prediction result with confidence and probabilities
         Raises:
-            FileNotFoundError: if image file doesn't exist
+            FileNotFoundError: if image file doesn't exist (for path inputs)
+            ValueError: if image is invalid
             RuntimeError: if inference fails
         """
         try:
-            image_path = self._validate_file_path(image)
-            image_array = cv2.imread(str(image_path))
-            assert image_array is not None, f"Failed to load image: {image_path}"
+            #dispatch based on input type
+            if isinstance(image, np.ndarray):
+                image_array = image
+                image_name = "array input"
+            else:
+                image_path = self._validate_file_path(image)
+                image_array = cv2.imread(str(image_path))
+                assert image_array is not None, f"Failed to load image: {image_path}"
+                image_name = image_path.name
 
-            self.logger.info(f"Processing image: {image_path.name}")
+            self.logger.info(f"Processing image: {image_name}")
 
-            #reuse ndarray implementation
-            logits, probabilities, prediction = self.predict_image(image_array)  # [1, 2], [1, 2], [1] on GPU
+            #call private method for inference
+            logits, probabilities, prediction = self._predict_image_array(image_array)  # [1, 2], [1, 2], [1] on GPU
 
             #CPU transfer and result construction
             probs_cpu = probabilities.cpu().numpy()[0]  # [2]
@@ -833,9 +839,9 @@ class InferenceEngine:
             self.logger.info(f"Predicted image: {prediction_label} (confidence: {confidence:.4f})")
 
             return result
-        
+
         except Exception as e:
-            error_msg = f"Inference failed for image array: {e}"
+            error_msg = f"Inference failed for image: {e}"
             self.logger.error(error_msg)
             raise RuntimeError(error_msg) from e
         
@@ -980,13 +986,21 @@ class InferenceEngine:
                 results.append(result)
 
             except FileNotFoundError as e:
-                self.logger.warning(f"Video file not found: {video_path}, skipping.")      
-            
+                self.logger.warning(f"Video file not found: {video_path}, skipping.")
+                #create error result for file not found
+                error_result = VideoInferenceResult(
+                    video_path=str(video_path),
+                    frame_results=[],
+                    aggregate_prediction="Inference Failed",
+                    aggregate_confidence=0.0,
+                    num_frames_analyzed=0,
+                    aggregation_metadata={"error": f"File not found: {e}"}
+                )
+                results.append(error_result)
+
             except Exception as e:
                 self.logger.error(f"Failed to process video {video_path}: {e}")
-                
-            finally:  
-                #create error result
+                #create error result for processing failure
                 error_result = VideoInferenceResult(
                     video_path=str(video_path),
                     frame_results=[],
@@ -996,7 +1010,6 @@ class InferenceEngine:
                     aggregation_metadata={"error": str(e)}
                 )
                 results.append(error_result)
-                continue
 
         self.logger.info(f"Batch video inference complete: {len(results)} results")
         return results
