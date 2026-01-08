@@ -122,7 +122,6 @@ model_architecture:
     # Description: Pretrained on ImageNet, extracts spatial features from faces
     name: EfficientNet-B4
     output_dim: 1792
-    pretrained: true  # Use ImageNet internal pretrained weights
 
   frequency_features:
     # FFT and DCT combined frequency analysis

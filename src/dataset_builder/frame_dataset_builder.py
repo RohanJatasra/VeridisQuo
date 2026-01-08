@@ -14,12 +14,15 @@ from functools import partial
 
 from tqdm import tqdm
 
-from core.csv_schemas import CSVItem, FrameCSVItem
+from core.schemas import CSVItem, FrameCSVItem
 from utils.csv_services import CSVService
 
 # Import optimized extractor with fallback
 try:
-    from preprocessing import OptimizedFramesExtractor, DECORD_AVAILABLE
+    from preprocessing.optimized_frames_extractor import (
+        OptimizedFramesExtractor,
+        DECORD_AVAILABLE
+    )
 except ImportError:
     DECORD_AVAILABLE = False
 
@@ -40,15 +43,16 @@ class FrameDatasetBuilder:
 
     FRAMES_METADATA_FILE = "frames_metadata.csv"
 
-    def __init__(self,
+    def __init__(
+        self,
         data_folder: str,
         frame_dir: str,
         videos_path: dict,
         num_workers: int,
-        fps: int,
-        device: str,
-        batch_size: int,
-        num_save_threads: int
+        fps: int = 1,
+        device: str = "cpu",
+        batch_size: int = 32,
+        num_save_threads: int = 4
     ):
         """
         Initialize FrameDatasetBuilder.
@@ -71,13 +75,13 @@ class FrameDatasetBuilder:
         self.device = device.lower()
         self.batch_size = batch_size
         self.num_save_threads = num_save_threads
-        self.logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
+        self.logger = logging.getLogger("FrameDatasetBuilder")
 
         # Log extraction mode
         if DECORD_AVAILABLE:
             self.logger.info(f"Using optimized decord extractor (device: {self.device})")
         else:
-            self.logger.warning("Decord not available, using slower OpenCV extraction")
+            self.logger.warning("decord not available, using slower OpenCV extraction")
 
     def extract_frames(self) -> List[FrameCSVItem]:
         """
@@ -121,7 +125,10 @@ class FrameDatasetBuilder:
                 videos.append((csv_name, video))
         return videos
 
-    def _gpu_process_videos(self, videos: List[Tuple[str, CSVItem]]) -> List[FrameCSVItem]:
+    def _gpu_process_videos(
+        self,
+        videos: List[Tuple[str, CSVItem]]
+    ) -> List[FrameCSVItem]:
         """
         Process videos using GPU-accelerated decoding.
 
@@ -177,9 +184,9 @@ class FrameDatasetBuilder:
         data_folder: str,
         frame_dir: str,
         fps: int,
-        device: str,
-        batch_size: int,
-        num_save_threads: int
+        device: str = "cpu",
+        batch_size: int = 32,
+        num_save_threads: int = 4
     ) -> List[FrameCSVItem]:
         """
         Worker function to extract frames using optimized extractor.

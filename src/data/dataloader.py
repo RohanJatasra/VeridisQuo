@@ -14,11 +14,11 @@ from data.dataset import FaceDataset
 
 def create_dataloader(
     dataset: FaceDataset,
-    batch_size: int,
-    shuffle: bool,
-    num_workers: int,
-    pin_memory: bool,
-    drop_last: bool
+    batch_size: int = 32,
+    shuffle: bool = True,
+    num_workers: int = 4,
+    pin_memory: bool = True,
+    drop_last: bool = False
 ) -> TorchDataLoader:
     """
     Create a PyTorch DataLoader for the given dataset.
@@ -34,7 +34,7 @@ def create_dataloader(
     Returns:
         PyTorch DataLoader instance
     """
-    logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
+    logger = logging.getLogger("data.dataloader")
 
     # Disable pin_memory if no CUDA
     if not torch.cuda.is_available():
@@ -68,11 +68,11 @@ class DataLoaderWrapper:
     def __init__(
         self,
         dataset: FaceDataset,
-        batch_size: int,
-        shuffle: bool,
-        num_workers: int,
-        device: Optional[torch.device],
-        drop_last: bool
+        batch_size: int = 32,
+        shuffle: bool = True,
+        num_workers: int = 4,
+        device: Optional[torch.device] = None,
+        drop_last: bool = False
     ):
         """
         Initialize DataLoaderWrapper.
@@ -87,7 +87,7 @@ class DataLoaderWrapper:
         """
         self.device = device or torch.device("cpu")
         self.batch_size = batch_size
-        self.logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
+        self.logger = logging.getLogger("data.DataLoaderWrapper")
 
         pin_memory = torch.cuda.is_available() and self.device.type == "cuda"
 

@@ -10,7 +10,11 @@ class BaseFrequencyExtractor:
     AVAILABLE_CHANNEL_MODES = ["luminance", "grayscale", "per_channel"]
     """Available channel processing modes"""
 
-    def __init__(self, channel_mode: str, feature_dim: int, logger_name: str):
+    def __init__(self,
+        channel_mode: str,
+        feature_dim: int,
+        logger_name: str
+    ):
         """Initialize BaseFrequencyExtractor.
         Parameters:
             channel_mode (str): how to handle color channels
@@ -27,9 +31,8 @@ class BaseFrequencyExtractor:
             assert feature_dim > 0, "Feature dimension must be positive"
 
         except AssertionError as e:
-            err_msg = f"Invalid parameters: {e}"
-            self.logger.fatal(err_msg)
-            raise ValueError(err_msg)
+            self.logger.fatal(f"Invalid parameters: {e}")
+            raise ValueError(f"Invalid parameters: {e}")
 
         self.channel_mode: str = channel_mode
         """Channel processing mode"""

@@ -1,11 +1,17 @@
-from logging import basicConfig, StreamHandler, FileHandler, getLogger
+from logging import basicConfig, StreamHandler, FileHandler, getLogger, info
+import torch
 import argparse
+from dataset_builder.dataset_builder import DatasetBuilder
+from training.trainer import Trainer
 from dotenv import load_dotenv, find_dotenv
+from utils.utils import get_device
+from core.model import DeepFakeDetector
+from torchsummary import summary
+import time
+from datetime import datetime
 from pathlib import Path
 from inference import InferenceEngine
 from utils import ConfigService
-from dataset_builder import DatasetBuilder
-from training import Trainer
 
 SUPPORTED_VIDEO_EXTENSIONS = ['.mp4', '.avi', '.mov', '.mkv']
 SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png']
@@ -94,34 +100,51 @@ if __name__ == "__main__":
         assert Path(args.config).exists(), f"Configuration file not found: {args.config}"
     
         config: ConfigService = ConfigService(ConfigService.load_config(args.config))
-        config_type = config.get_config_type()
-        
-        assert config_type in args.mode, "Configuration type does not match execution mode."
+    
+        assert config.get('type') in args.mode or config.get('type') is None, "Configuration type does not match execution mode."
     
     except AssertionError as e:
         print(f"Could not start VeridisQuo, invalid parameter: {e}")
         exit(1)
 
-    try:
-        logger_params = config.extract_logger_config()
-        init_logging_system(**logger_params)
+    try: 
+        log_dir = config.get('paths').get('output').get('logs_dir')
+        log_filename = log_dir + '/' + config.get('logging').get('file').get('path')
+        log_level = config.get('logging').get('level')
+        log_format = config.get('logging').get('format')
+        log_datefmt = config.get('logging').get('datefmt')
+        log_console_enabled = config.get('logging').get('console').get('enabled')
+        log_file_enabled = config.get('logging').get('file').get('enabled')
+        
+        init_logging_system(
+            log_dir=log_dir,
+            log_filename=log_filename,
+            log_level=log_level,
+            log_format=log_format,
+            log_datefmt=log_datefmt,
+            console=log_console_enabled,
+            file=log_file_enabled
+        )
 
         logger = getLogger("/".join(__file__.split("/")[-2:]))
-        logger.info(f"Logging initialized to file: {logger_params.get('log_filename', 'N/A')}")
+        logger.info(f"Logging initialized to file: {log_filename}")
         
-        #execution based on mode
+        #execute based on mode
         match args.mode:
             case 'inference':
                 logger.info("Starting inference mode...")
 
                 assert args.input, "Input path is required for inference mode."
                 
-                engine = InferenceEngine(config=config.extract_inference_config())
+                engine = InferenceEngine(config=config)
 
                 input_path = Path(args.input)
                 assert input_path.exists(), f"Input path not found: {input_path}"
 
-                              
+                aggregation_method=config.get('inference').get('score_aggregation').get('aggregation_method')
+                batch_size=config.get('inference').get('batch_processing').get('default_batch_size')
+                frames_per_second=config.get('preprocessing').get('frame_extraction').get('frames_per_second')
+                use_pyav_extractor=config.get('preprocessing').get('frame_extraction').get('use_optimized')               
                 
                 if input_path.is_file():
                     logger.info(f"Running inference on file: {input_path}")
@@ -129,7 +152,10 @@ if __name__ == "__main__":
                     
                     result = engine.predict_video(
                         video_paths=input_path,
-                        **config.extract_predict_video_params()
+                        batch_size=batch_size,
+                        frames_per_second=frames_per_second,
+                        use_pyav_extractor=use_pyav_extractor,
+                        aggregation_method=aggregation_method
                     )
                     
                 elif input_path.is_dir():
@@ -141,22 +167,29 @@ if __name__ == "__main__":
                     
                     result = engine.predict_video_batch(
                         video_paths=input_files,
-                        **config.extract_predict_video_params()
+                        batch_size=batch_size,
+                        frames_per_second=frames_per_second,
+                        use_pyav_extractor=use_pyav_extractor,
+                        aggregation_method=aggregation_method
                     )
 
             case 'train':
                 logger.info("Starting training mode...")
-                logger.warning("Training mode is under development and may not work as expected.")
-                
-                trainer = Trainer(config=config.extract_training_config()) 
-                trainer.train()
+
+                #TODO: initialize trainer with config
+                # trainer = Trainer(config=config)
+                # trainer.train()
+
+                logger.warning("Training mode not yet implemented")
 
             case 'build_dataset':
                 logger.info("Starting dataset building mode...")
-                logger.warning("Dataset building mode is experimental and may not work as expected.")
 
-                builder = DatasetBuilder(**config.extract_dataloader_config())
-                builder.build_complete_dataset(**config.extract_build_dataset_params())
+                #TODO: initialize dataset builder with config
+                # builder = DatasetBuilder(config=config)
+                # builder.build()
+
+                logger.warning("Dataset building mode not yet implemented")
 
         logger.info("Execution completed successfully")
         

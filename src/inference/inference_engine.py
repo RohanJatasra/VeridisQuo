@@ -6,12 +6,23 @@ from typing import Union, List, Optional, Tuple, Dict, Any
 import urllib.request
 import cv2
 import numpy as np
-from utils import InferenceConfig
-from core import DeepFakeDetector
-from preprocessing import FaceDetector, FaceExtractor, BaseFramesExtractor
+from core.model import DeepFakeDetector
+from preprocessing.face_detector import FaceDetector
+from preprocessing.face_extractor import FaceExtractor
+from preprocessing.optimized_frames_extractor import create_frames_extractor
 from torchvision import transforms
-from inference import InferenceResult, VideoInferenceResult, BatchPrefetcher, ScoreAggregator
-from gradcam import GradCAM, GradCAMVisualizer
+from utils.inference_results_dataclasses import InferenceResult, VideoInferenceResult
+from inference.score_aggregator import ScoreAggregator, AggregatedScore
+from inference.batch_prefetcher import BatchPrefetcher
+from utils.config_dataclasses import InferenceConfig
+from config import (
+    PROJECT_ROOT,
+    MODEL_FILENAME,
+    FACE_DETECTION_MODEL_PATH,
+    FACE_DETECTION_HF_URL,
+    HF_MODEL_URL
+)
+from gradcam.gradcam import GradCAM, GradCAMVisualizer
 
 
 class InferenceEngine:
@@ -20,10 +31,12 @@ class InferenceEngine:
     CLASS_LABELS: List[str] = ["FAKE", "REAL"]
     """Supported class labels for model predictions (FAKE=0, REAL=1)"""
  
-    def __init__(self, config: InferenceConfig):
+    def __init__(self, config: InferenceConfig, **kwargs):
         """Initialize InferenceEngine.
         Parameters:
             config (InferenceConfig): configuration for entire inference engine and model
+            kwargs: override config parameters for critical settings, allowing to run without full config
+                TODO
         Raises:
             ValueError: if config is not provided and no valid parameter is given for fallback
             RuntimeError: if model loading fails
@@ -34,77 +47,112 @@ class InferenceEngine:
         """Logger instance for InferenceEngine"""
 
         if config is None:
-            error_msg = "Configuration is required. Please provide an InferenceConfig instance."
-            self.logger.error(error_msg)
-            raise ValueError(error_msg)
+            raise ValueError("Configuration is required. Please provide an InferenceConfig instance.")
+
+        if not isinstance(config, InferenceConfig):
+            raise TypeError(f"config must be InferenceConfig, got {type(config).__name__}")
 
         self.config: InferenceConfig = config
 
-        self.logger.info(f"Model will be loaded on device: {self.config.device} (cuda available: {torch.cuda.is_available()})")
+        #TODO: handle kwargs overrides for critical settings
+        #Example: model_path, device, auto_download, etc.
 
-        self.model_path = Path(self.config.model_dir) / self.config.model_name
+        self.device: torch.device = self.config.device.get_device()
+        """Device to run inference on (CPU or GPU)"""
+        self.logger.info(f"Model will be loaded on device: {self.device} (cuda available: {torch.cuda.is_available()})")
+
+        self.model_path: Path
+        """Path to model weights file"""
+        if self.config.paths.model_path is None:
+            self.model_path = PROJECT_ROOT / "models" / "deepfake_detection" / MODEL_FILENAME
+        else:
+            self.model_path = Path(self.config.paths.model_path)
+
+        if not self.model_path.exists() and self.config.inference_options.auto_download_model:
+            self.logger.warning(f"Model not found at {self.model_path}, downloading from Hugging Face...")
+            self._download_model()
+
         if not self.model_path.exists():
-            self.logger.warning(f"Model not found at {self.model_path}!")
-            if self.config.auto_download_model:
-                self.logger.info(f"Downloading from Hugging Face...")
-                self._download_model()
-            else:
-                error_msg = f"Model weights not found at {self.model_path} and auto-download is disabled."
-                self.logger.error(error_msg)
-                raise FileNotFoundError(error_msg)
+            error_msg = f"Model file not found at {self.model_path}. Set auto_download=True to download automatically."
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
 
         self.logger.info("Initializing VeridisQuo deepfake detection model...")
 
-        self.model: DeepFakeDetector = DeepFakeDetector(config=self.config.model_config)
+        self.model: DeepFakeDetector = DeepFakeDetector(config=self.config.model_architecture)
         """DeepFakeDetector model instance"""
 
         self._load_weights()
         self.logger.info("Model initialized and weights loaded successfully.")
 
-        self.model = self.model.to(self.config.device)
-        self.logger.info(f"Model moved to device: {self.config.device}")
+        self.model = self.model.to(self.device)
+        self.logger.info(f"Model moved to device: {self.device}")
         self.model.eval()
         self.logger.info("Model set to evaluation mode.")
 
         self.face_detector: Optional[FaceDetector] = None
         """FaceDetector instance for video inference, if available"""
 
-        if self.config.face_detection_config:
-            face_detection_model_path = Path(self.config.face_detection_config.model_path)
-            
-            if not face_detection_model_path.exists():
-                self.logger.warning(f"Face detection model not found at {face_detection_model_path}. Disabling face detection.")            
-            
-            else:
-                self.logger.info("Face detection enabled. Initializing FaceDetector...")
+        face_detection_model_path = Path(self.config.paths.face_detection_model_path) if self.config.paths.face_detection_model_path else FACE_DETECTION_MODEL_PATH
+
+        if self.config.preprocessing.face_detection.enabled:
+            # Auto-download face detection model if not found
+            if not face_detection_model_path.exists() and self.config.inference_options.auto_download_model:
+                self.logger.warning(f"Face detection model not found at {face_detection_model_path}, downloading from Hugging Face...")
+                self._download_face_detection_model(face_detection_model_path)
+
+            if face_detection_model_path.exists():
+                self.logger.info("Initializing FaceDetector...")
 
                 self.face_detector = FaceDetector(
                     model_path=str(face_detection_model_path),
-                    device=str(self.config.device),
-                    min_face_size=self.config.face_detection_config.min_face_size,
-                    confidence_threshold=self.config.face_detection_config.confidence_threshold,
-                    only_keep_top=self.config.face_detection_config.only_keep_top_face
+                    device=str(self.device),
+                    min_face_size=self.config.preprocessing.face_detection.min_face_size,
+                    confidence_threshold=self.config.preprocessing.face_detection.confidence_threshold,
+                    only_keep_top=self.config.preprocessing.face_detection.only_keep_top
+                )
+            else:
+                self.logger.warning(
+                    f"Face detection model not found at {face_detection_model_path} and auto-download is disabled. "
+                    "Video inference will process entire frames instead of detected faces."
                 )
         else:
-            self.logger.warning(f"Face detection disabled or model not found at {face_detection_model_path}. "
-                "Video inference will process entire frames instead of detected faces."
-            )
+            self.logger.info("Face detection is disabled in configuration.")
+
+        self.image_size: Tuple[int, int] = self.config.preprocessing.face_extraction.target_size
+        """Image size for preprocessing (width, height)"""
+
+        self.mean: List[float] = self.config.preprocessing.imagenet_mean
+        """ImageNet mean for normalization"""
+
+        self.std: List[float] = self.config.preprocessing.imagenet_std
+        """ImageNet std for normalization"""
+
+        self.padding: int = self.config.preprocessing.face_extraction.padding
+        """Padding around detected face bounding box"""
+
+        self.use_face_detection: bool = self.face_detector is not None
+        """Whether face detection is available for video inference"""
+        self.logger.info(f"Face detection enabled: {self.use_face_detection}")
 
         self.face_extractor: FaceExtractor = FaceExtractor(
-            target_size=self.config.face_extraction_config.target_size,
-            normalization=self.config.face_extraction_config.normalization,
-            padding=self.config.face_extraction_config.padding
+            target_size=self.image_size,
+            normalization=self.config.preprocessing.face_extraction.normalization,
+            padding=self.padding
         )
         """Face extractor for consistent preprocessing"""
 
         self.transform: transforms.Compose = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize(mean=self.config.imagenet_mean, std=self.config.imagenet_std)
+            transforms.Normalize(mean=self.mean, std=self.std)
         ])
         """Torchvision transform pipeline for normalization"""
 
         self.gradcam: Optional[GradCAM] = None
         """GradCAM instance (initialized on-demand)"""
+
+        self.gradcam_target_layer = None
+        """Target conv layer for GradCAM visualization"""
 
         self.logger.info("InferenceEngine initialized successfully")
 
@@ -125,7 +173,7 @@ class InferenceEngine:
             RuntimeError: if download fails
         """
         try:
-            self.logger.info(f"Downloading model from {self.config.hf_model_url}...")
+            self.logger.info(f"Downloading model from {HF_MODEL_URL}...")
 
             #create parent directory if needed
             self.model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -137,13 +185,13 @@ class InferenceEngine:
                     self.logger.info(f"Download progress: {percent}%")
 
             urllib.request.urlretrieve(
-                self.config.hf_model_url,
+                HF_MODEL_URL,
                 self.model_path,
                 reporthook=_progress_hook
             )
 
             self.logger.info(f"Model downloaded successfully to {self.model_path}")
-        
+
         except Exception as e:
             error_msg = f"Failed to download model from Hugging Face: {e}"
             self.logger.error(error_msg)
@@ -191,7 +239,7 @@ class InferenceEngine:
         try:
             self.logger.info(f"Loading model weights from {self.model_path}...")
 
-            checkpoint = torch.load(self.model_path, map_location=self.config.device, weights_only=False)
+            checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
 
             # Handle both direct state_dict and training checkpoint formats
             if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
@@ -255,7 +303,7 @@ class InferenceEngine:
             RuntimeError: if all images fail preprocessing
         """
         #batch face detection wrapped into a single YOLO forward pass
-        if self.face_detector is not None:
+        if self.use_face_detection:
             detections_batch = self.face_detector.detect_faces_batch(images)
         else:
             detections_batch = [[] for _ in images]
@@ -316,7 +364,7 @@ class InferenceEngine:
         batch_tensor = self._preprocess_image_batch(frames)  # [N, 3, 224, 224] CPU
 
         #single GPU transfer for entire batch
-        batch_tensor = batch_tensor.to(self.config.device)
+        batch_tensor = batch_tensor.to(self.device)
 
         logits, probabilities, prediction = self._run_inference(batch_tensor)
 
@@ -520,7 +568,7 @@ class InferenceEngine:
                 cam_np = cam.cpu().numpy()  # [224, 224] float32 [0, 1]
 
                 # Get face bounding box
-                if self.face_detector is not None:
+                if self.use_face_detection:
                     detections = self.face_detector.detect_faces_batch([frame])[0]
                     if detections:
                         detection = detections[0]
@@ -792,10 +840,10 @@ class InferenceEngine:
             self.logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
-    def _predict_image_array(self, image: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Private method: run inference on a numpy image array.
+    def predict_image(self, image: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Run inference on a single image.
         Parameters:
-            image (np.ndarray): image array [H, W, 3] in BGR format
+            image (np.ndarray): Image array [H, W, 3] in BGR format
         Returns:
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: (logits, probabilities, prediction)
                 - logits: [1, 2] on GPU
@@ -809,7 +857,7 @@ class InferenceEngine:
             assert image is not None and image.size != 0, "Image is empty or None"
 
             preprocessed = self._preprocess_image(image)  #[1, 3, 224, 224]
-            preprocessed = preprocessed.to(self.config.device)
+            preprocessed = preprocessed.to(self.device)
             logits, probabilities, prediction = self._run_inference(preprocessed)
             return logits, probabilities, prediction
 
@@ -823,32 +871,25 @@ class InferenceEngine:
             self.logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
-    def predict_image(self, image: Union[str, Path, np.ndarray]) -> InferenceResult:
+    def predict_image(self, image: Union[str, Path]) -> InferenceResult:
         """Run inference on a single image.
         Parameters:
-            image (str, Path, or np.ndarray): image file path or image array [H, W, 3] in BGR format
+            image (str or Path): Path to the image file
         Returns:
-            InferenceResult: prediction result with confidence and probabilities
+            InferenceResult: Prediction result with confidence and probabilities.
         Raises:
-            FileNotFoundError: if image file doesn't exist (for path inputs)
-            ValueError: if image is invalid
+            FileNotFoundError: if image file doesn't exist
             RuntimeError: if inference fails
         """
         try:
-            #dispatch based on input type
-            if isinstance(image, np.ndarray):
-                image_array = image
-                image_name = "array input"
-            else:
-                image_path = self._validate_file_path(image)
-                image_array = cv2.imread(str(image_path))
-                assert image_array is not None, f"Failed to load image: {image_path}"
-                image_name = image_path.name
+            image_path = self._validate_file_path(image)
+            image_array = cv2.imread(str(image_path))
+            assert image_array is not None, f"Failed to load image: {image_path}"
 
-            self.logger.info(f"Processing image: {image_name}")
+            self.logger.info(f"Processing image: {image_path.name}")
 
-            #call private method for inference
-            logits, probabilities, prediction = self._predict_image_array(image_array)  # [1, 2], [1, 2], [1] on GPU
+            #reuse ndarray implementation
+            logits, probabilities, prediction = self.predict_image(image_array)  # [1, 2], [1, 2], [1] on GPU
 
             #CPU transfer and result construction
             probs_cpu = probabilities.cpu().numpy()[0]  # [2]
@@ -873,21 +914,21 @@ class InferenceEngine:
             self.logger.info(f"Predicted image: {prediction_label} (confidence: {confidence:.4f})")
 
             return result
-
+        
         except Exception as e:
-            error_msg = f"Inference failed for image: {e}"
+            error_msg = f"Inference failed for image array: {e}"
             self.logger.error(error_msg)
             raise RuntimeError(error_msg) from e
         
     def predict_video(self,
         video_path: Union[str, Path],
-        frames_per_second: Optional[int],
-        aggregation_method: str,
-        use_pyav_extractor: bool,
-        batch_size: int,
-        enable_gradcam: bool,
-        gradcam_output_path: Optional[Union[str, Path]],
-        gradcam_alpha: float
+        frames_per_second: Optional[int] =1,
+        aggregation_method: str ="majority",
+        use_pyav_extractor: bool =True,
+        batch_size: int =8,
+        enable_gradcam: bool = False,
+        gradcam_output_path: Optional[Union[str, Path]] = None,
+        gradcam_alpha: float = 0.4
     ) -> VideoInferenceResult:
         """Run inference on a video file.
         Parameters:
@@ -922,11 +963,11 @@ class InferenceEngine:
 
         try:
             #create frames extractor
-            frames_extractor = BaseFramesExtractor.create_extractor(
-                use_optimized=use_pyav_extractor,
+            frames_extractor = create_frames_extractor(
                 video_path=str(video_path),
                 nb_fps=frames_per_second,
-                device=str(self.config.device)
+                device=str(self.device),
+                use_optimized=use_pyav_extractor
             )
 
             self.logger.info(f"Extracting frames at {frames_per_second} FPS (video FPS: {frames_extractor.video_fps:.1f})")
@@ -971,15 +1012,13 @@ class InferenceEngine:
             self.logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
-    def predict_video_batch(self,
+    def predict_video_batch(
+        self,
         video_paths: List[Union[str, Path]],
-        frames_per_second: Optional[int],
-        aggregation_method: str,
-        use_pyav_extractor: bool,
-        batch_size: int,
-        enable_gradcam: bool,
-        gradcam_output_path: Optional[Union[str, Path]],
-        gradcam_alpha: float
+        frames_per_second: Optional[int] = 1,
+        aggregation_method: str = "majority",
+        use_pyav_extractor: bool = True,
+        batch_size: int = 8
     ) -> List[VideoInferenceResult]:
         """Run inference on a batch of videos.
         Parameters:
@@ -1012,29 +1051,18 @@ class InferenceEngine:
                     frames_per_second=frames_per_second,
                     aggregation_method=aggregation_method,
                     use_pyav_extractor=use_pyav_extractor,
-                    batch_size=batch_size,
-                    enable_gradcam=enable_gradcam,
-                    gradcam_output_path=gradcam_output_path,
-                    gradcam_alpha=gradcam_alpha
+                    batch_size=batch_size
                 )
                 results.append(result)
 
             except FileNotFoundError as e:
-                self.logger.warning(f"Video file not found: {video_path}, skipping.")
-                #create error result for file not found
-                error_result = VideoInferenceResult(
-                    video_path=str(video_path),
-                    frame_results=[],
-                    aggregate_prediction="Inference Failed",
-                    aggregate_confidence=0.0,
-                    num_frames_analyzed=0,
-                    aggregation_metadata={"error": f"File not found: {e}"}
-                )
-                results.append(error_result)
-
+                self.logger.warning(f"Video file not found: {video_path}, skipping.")      
+            
             except Exception as e:
                 self.logger.error(f"Failed to process video {video_path}: {e}")
-                #create error result for processing failure
+                
+            finally:  
+                #create error result
                 error_result = VideoInferenceResult(
                     video_path=str(video_path),
                     frame_results=[],
@@ -1044,6 +1072,7 @@ class InferenceEngine:
                     aggregation_metadata={"error": str(e)}
                 )
                 results.append(error_result)
+                continue
 
         self.logger.info(f"Batch video inference complete: {len(results)} results")
         return results

@@ -15,7 +15,7 @@ class BatchPrefetcher:
     def __init__(self,
         frame_iterator: Iterator[Tuple[np.ndarray, Dict[str, Any]]],
         batch_size: int,
-        prefetch_size: int
+        prefetch_size: int =2
     ):
         """Initialize the batch prefetcher.
         Parameters:

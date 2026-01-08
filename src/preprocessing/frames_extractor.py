@@ -3,56 +3,73 @@ import numpy as np
 from pathlib import Path
 from typing import Generator, Tuple, Optional, Dict, Any
 import logging
-from .base_frames_extractor import BaseFramesExtractor
 
-
-class FramesExtractor(BaseFramesExtractor):
-    """Extract frames from video files using OpenCV with configurable sampling rate.
-
-    Provides frame data and metadata (timestamp, frame number).
-    Uses OpenCV's VideoCapture for frame extraction.
+class FramesExtractor:
+    """Extract frames from video files with configurable sampling rate, extracted frame data 
+    and metadata (timestamp, frame number).
     """
 
-    def __init__(self, video_path: str, nb_fps: int):
-        """Initialize FramesExtractor.
+    def __init__(self,
+        video_path: str,
+        nb_fps: Optional[int] =None,
+    ):
+        """Initialize VideoExtractor
         Parameters:
             video_path (str): path to the video file
-            nb_fps (int): number of frames to extract per second
+            nb_fps (int, optional): number of frames to extract per second.
         Raises:
             FileNotFoundError: if video file doesn't exist
             ValueError: if video fail to open
         """
-        super().__init__(
-            video_path=video_path,
-            nb_fps=nb_fps,
-            logger_name="/".join(__file__.split("/")[-2:])
-        )
+        self.video_path: Path = Path(video_path)
+        """Video file path"""
+        self.nb_fps: Optional[int] = nb_fps
+        """Number of frames to extract per second"""
+        self.logger: logging.Logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
+        """Logger instance for the FramesExtractor class"""
 
-        #open video with OpenCV
+        if not self.video_path.exists():
+            self.logger.fatal(f"Video file not found: {self.video_path}")
+            raise FileNotFoundError(f"Video file not found: {self.video_path}")
+
+        self._video_props: cv2.VideoCapture = cv2.VideoCapture(str(self.video_path))
+        """Captures video properties"""
+
+        if not self._video_props.isOpened():
+            self.logger.fatal(f"Could not open video file: {self.video_path}")
+            raise ValueError(f"Could not open video file: {self.video_path}")
+
+        self.video_fps = self._video_props.get(cv2.CAP_PROP_FPS)
+        """Fps of the video"""
         try:
-            self._video_props: cv2.VideoCapture = cv2.VideoCapture(str(self.video_path))
-            """OpenCV VideoCapture object for reading frames"""
-
-            assert self._video_props.isOpened(), f"Could not open video file: {self.video_path}"
-
-            #set video properties from OpenCV
-            self.video_fps = self._video_props.get(cv2.CAP_PROP_FPS)
             assert self.video_fps > 0, "Video has 0 FPS"
-
-            self.total_frames = int(self._video_props.get(cv2.CAP_PROP_FRAME_COUNT))
-            assert self.total_frames > 0, "Video has 0 frames"
-
-            self.width = int(self._video_props.get(cv2.CAP_PROP_FRAME_WIDTH))
-            self.height = int(self._video_props.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            self.duration = self.total_frames / self.video_fps if self.video_fps > 0 else 0
-
+            
         except AssertionError as e:
             self._video_props.release()
-            err_msg = f"Invalid parameters: {e}"
-            self.logger.fatal(err_msg)
-            raise ValueError(err_msg)
+            self.logger.fatal(f"Invalid parameters: {self.video_fps} for video {self.video_path}")
+            raise ValueError(f"Invalid parameters: {self.video_fps} for video {self.video_path}")
 
-        self._calculate_frame_interval()
+        self.total_frames = int(self._video_props.get(cv2.CAP_PROP_FRAME_COUNT))
+        """Total number of frames in the video"""
+        try:
+            assert self.total_frames > 0, "Video has 0 frames"
+            
+        except AssertionError as e:
+            self._video_props.release()
+            self.logger.fatal(f"Invalid parameters: {self.total_frames} for video {self.video_path}")
+            raise ValueError(f"Invalid parameters: {self.total_frames} for video {self.video_path}")    
+    
+        self.width = int(self._video_props.get(cv2.CAP_PROP_FRAME_WIDTH))
+        """Width of the video frames"""
+        self.height = int(self._video_props.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        """Height of the video frames"""
+        self.duration = self.total_frames / self.video_fps if self.video_fps > 0 else 0
+        """Duration of the video in seconds"""
+        
+        if self.nb_fps is not None and self.nb_fps > 0:
+            self.frame_interval = max(1, int(self.video_fps / self.nb_fps))
+        else:
+            self.frame_interval = 1  #every frame extracted by default
         
     def extract_frames(self) -> Generator[Tuple[np.ndarray, Dict[str, Any]], None, None]:
         """Extract frames from the video.
@@ -77,7 +94,7 @@ class FramesExtractor(BaseFramesExtractor):
                     extracted = self.get_frame_at(frame_count)
 
                     if extracted is None:
-                        self.logger.info(f"Reached end of video at frame {frame_count}.")
+                        self.logger.info(f"- extract_frames - reached end of video at frame {frame_count}.")
                         break
 
                     yield extracted
@@ -86,12 +103,11 @@ class FramesExtractor(BaseFramesExtractor):
 
                 frame_count += 1
 
-            self.logger.info(f"Frame extraction complete: {extracted_count} frames extracted from {frame_count} total frames.")
+            self.logger.info(f"- extract_frames - frame extraction complete: {extracted_count} frames extracted from {frame_count} total frames.")
 
         except Exception as e:
-            err_msg = f"Error during frame extraction: {e}"
-            self.logger.error(err_msg)
-            raise RuntimeError(err_msg)
+            self.logger.error(f"- extract_frames - {e}")
+            raise RuntimeError(f"Error during frame extraction: {e}")
         
     def get_frame_at(self, frame_index: int) -> Optional[Tuple[np.ndarray, Dict[str, Any]]]:
         """Extract a specific frame by frame number.
@@ -104,23 +120,44 @@ class FramesExtractor(BaseFramesExtractor):
         """
         try:
             assert frame_index >= 0 and frame_index < self.total_frames, f"Frame index {frame_index} out of range [0, {self.total_frames})"
-
+            
         except AssertionError as e:
-            err_msg = f"Error getting frame at index {frame_index}: {e}"
-            self.logger.error(err_msg)
-            raise IndexError(err_msg)
+            self.logger.error(f"- get_frame_at - {e}")
+            raise IndexError(f"Error getting frame at index {frame_index}: {e}")
 
         self._video_props.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
         is_read, frame = self._video_props.read()
 
         if not is_read:
-            self.logger.debug(f"Failed to read frame {frame_index}")
+            self.logger.debug(f"- get_frame_at - failed to read frame {frame_index}")
             return None
 
-        #use base class method to build metadata
-        metadata = self._build_metadata(frame_index)
+        timestamp = frame_index / self.video_fps if self.video_fps > 0 else 0
+
+        metadata = {
+            "frame_id": frame_index,
+            "frame_number": frame_index,
+            "timestamp": timestamp,
+            "video_fps": self.video_fps,
+            "resolution": (self.width, self.height)
+        }
 
         return frame, metadata
+
+    def get_video_info(self) -> Dict[str, Any]:
+        """Get video information.
+        Returns:
+            Dict[str, Any]: dictionary with video properties
+        """
+        return {
+            "path": str(self.video_path),
+            "fps": self.video_fps,
+            "total_frames": self.total_frames,
+            "width": self.width,
+            "height": self.height,
+            "duration": self.duration,
+            "frame_interval": self.frame_interval
+        }
 
     def save_frame(self, frame: np.ndarray, output_path: str) -> None:
         """Save a frame to the provided location.
@@ -133,22 +170,19 @@ class FramesExtractor(BaseFramesExtractor):
         """
         try:
             assert frame is not None and frame.size > 0, "Invalid frame to save"
-            output_path = Path(output_path)
-            assert output_path.parent.exists(), "Output directory does not exist"
+            assert Path.exists(Path(output_path).parent), "Output directory does not exist"
         
-        except (AssertionError, TypeError) as e:
-            self.logger.error(e)
+        except AssertionError as e:
+            self.logger.error(f"- save_frame - {e}")
             raise ValueError(f"Invalid parameters for save_frame: {e}")
         
+        output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        try:
-            assert cv2.imwrite(str(output_path), frame), "OpenCV failed to save frame"
+        success = cv2.imwrite(str(output_path), frame)
 
-        except Exception as e:
-            err_mmsg = f"Failed to save frame to {output_path}: {e}"
-            self.logger.error(err_mmsg)
-            raise RuntimeError(err_mmsg)
+        if not success:
+            raise RuntimeError(f"Failed to save frame to {output_path}")
 
     def __del__(self):
         """Destructor - ensure resources are released."""

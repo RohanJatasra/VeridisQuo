@@ -67,7 +67,7 @@ class GradCAM:
     def generate_cam(
         self,
         input_tensor: torch.Tensor,
-        target_class: Optional[int]
+        target_class: Optional[int] = None
     ) -> torch.Tensor:
         """
         Generate class activation map for the input.
@@ -158,8 +158,8 @@ class GradCAM:
     def __call__(
         self,
         input_tensor: torch.Tensor,
-        target_class: Optional[int],
-        upsample_to: Optional[Tuple[int, int]]
+        target_class: Optional[int] = None,
+        upsample_to: Optional[Tuple[int, int]] = None
     ) -> torch.Tensor:
         """
         Generate and optionally upsample CAM.
@@ -310,10 +310,6 @@ class GradCAMVisualizer:
         return visualization
 
 
-class GradCam(GradCAM):
-    """Alias for GradCAM for backward compatibility.
-
-    Deprecated: Use GradCAM instead. This alias exists only to maintain
-    compatibility with older code that used the lowercase naming convention.
-    """
+class GradCam:
+    """Alias for backward compatibility."""
     pass

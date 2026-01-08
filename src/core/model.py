@@ -1,18 +1,20 @@
+from typing import List, Optional
 from torch import nn
 import torch
-from spatial import EfficientNetFeatureExtractor
-from frequal import FrequencyFeatureExtractor
-from classification import FaceFeaturesConcatenator, FaceClassifier
+from spatial.efficient_net import EfficientNetFeatureExtractor
+from frequal.frequency_feature_extractor import FrequencyFeatureExtractor
+from classification.face_features_concatenator import FaceFeaturesConcatenator
+from classification.face_classifier import FaceClassifier
 from logging import Logger, getLogger
-from utils import ModelArchitectureConfig
+from utils.config_dataclasses import ModelArchitectureConfig
 
 class DeepFakeDetector(nn.Module):
     """Deepfake detection model combining spatial and frequency analysis."""
 
-    def __init__(self, config: ModelArchitectureConfig) -> None:
+    def __init__(self, pretrained: bool =True, use_gpu: bool =True, config: Optional[ModelArchitectureConfig] =None) -> None:
         """Initialize DeepFakeDetector.
         Parameters:
-            effnet_pretrained (bool): whether to use effnet_pretrained weights for EfficientNet-B4 (legacy, overridden by config)
+            pretrained (bool): whether to use pretrained weights for EfficientNet-B4 (legacy, overridden by config)
             use_gpu (bool): whether to use GPU for frequency feature extraction (legacy, overridden by config)
             config (ModelArchitectureConfig, optional): model architecture configuration
         Raises:
@@ -24,52 +26,52 @@ class DeepFakeDetector(nn.Module):
         """Logger instance for the DeepFakeDetector class"""
 
         if config is None:
-            error_msg = "ModelArchitectureConfig is required to initialize DeepFakeDetector."
-            self.logger.error(error_msg)
-            raise ValueError(error_msg)
-        
+            config = ModelArchitectureConfig()
+
+        if pretrained is not None:
+            config.spatial_features.pretrained = pretrained
+        if use_gpu is not None:
+            config.frequency_features.use_gpu_extractors = use_gpu
+
         self.config: ModelArchitectureConfig = config
         """Model architecture configuration"""
 
         self.efficient: EfficientNetFeatureExtractor = EfficientNetFeatureExtractor(
-            pretrained=self.config.spatial_features.effnet_pretrained,
-            path_to_weights=self.config.spatial_features.path_to_weights
+            pretrained=config.spatial_features.pretrained,
+            path_to_weights=config.spatial_features.path_to_weights
         )
         """EfficientNet-B4 feature extractor for spatial analysis"""
 
         self.frequal_extractor: FrequencyFeatureExtractor = FrequencyFeatureExtractor(
-            fft_feature_dim=self.config.frequency_features.fft_feature_dim,
-            fft_num_radial_bands=self.config.frequency_features.fft_num_radial_bands,
-            fft_window_function=self.config.frequency_features.fft_window_function,
-            fft_high_freq_emphasis=self.config.frequency_features.fft_high_freq_emphasis,
-            dct_feature_dim=self.config.frequency_features.dct_feature_dim,
-            dct_block_size=self.config.frequency_features.dct_block_size,
-            channel_mode=self.config.frequency_features.channel_mode,
-            dct_aggregation_method=self.config.frequency_features.dct_aggregation_method,
-            dct_num_frequency_bands=self.config.frequency_features.dct_num_frequency_bands,
-            fusion_output_dim=self.config.frequency_features.fusion_output_dim,
-            fusion_hidden_dims=self.config.frequency_features.fusion_hidden_dims,
-            fusion_dropout_rate=self.config.frequency_features.fusion_dropout_rate,
-            fusion_use_batch_norm=self.config.frequency_features.fusion_use_batch_norm,
-            path_to_weights=self.config.frequency_features.path_to_weights,
-            use_gpu_extractors=self.config.frequency_features.use_gpu_extractors,
-            fft_num_azimuthal_sectors=self.config.frequency_features.fft_num_azimuthal_sectors,
-            fft_high_freq_threshold_ratio=self.config.frequency_features.fft_high_freq_threshold_ratio,
-            fft_artifact_edge_width=self.config.frequency_features.fft_artifact_edge_width,
-            fft_artifact_num_radial_samples=self.config.frequency_features.fft_artifact_num_radial_samples,
-            fft_artifact_center_region_size=self.config.frequency_features.fft_artifact_center_region_size,
-            fft_default_smoothing_kernel_size=self.config.frequency_features.fft_default_smoothing_kernel_size,
-            fft_energy_band_start_multiplier=self.config.frequency_features.fft_energy_band_start_multiplier,
-            fft_energy_band_end_multiplier=self.config.frequency_features.fft_energy_band_end_multiplier,
-            fft_epsilon=self.config.frequency_features.fft_epsilon,
-            dct_epsilon=self.config.frequency_features.dct_epsilon
+            fft_feature_dim=config.frequency_features.fft.feature_dim,
+            fft_num_radial_bands=config.frequency_features.fft.num_radial_bands,
+            fft_window_function=config.frequency_features.fft.window_function,
+            fft_high_freq_emphasis=config.frequency_features.fft.high_freq_emphasis,
+            dct_feature_dim=config.frequency_features.dct.feature_dim,
+            dct_block_size=config.frequency_features.dct.block_size,
+            channel_mode=config.frequency_features.channel_mode,
+            dct_aggregation_method=config.frequency_features.dct.aggregation_method,
+            dct_num_frequency_bands=config.frequency_features.dct.num_frequency_bands,
+            fusion_output_dim=config.frequency_features.fusion.output_dim,
+            fusion_hidden_dims=config.frequency_features.fusion.hidden_dims,
+            fusion_dropout_rate=config.frequency_features.fusion.dropout_rate,
+            fusion_use_batch_norm=config.frequency_features.fusion.use_batch_norm,
+            path_to_weights=config.frequency_features.fusion.path_to_weights,
+            use_gpu_extractors=config.frequency_features.use_gpu_extractors,
+            fft_num_azimuthal_sectors=config.frequency_features.fft_constants.num_azimuthal_sectors,
+            fft_high_freq_threshold_ratio=config.frequency_features.fft_constants.high_freq_threshold_ratio,
+            fft_artifact_edge_width=config.frequency_features.fft_constants.artifact_edge_width,
+            fft_artifact_num_radial_samples=config.frequency_features.fft_constants.artifact_num_radial_samples,
+            fft_artifact_center_region_size=config.frequency_features.fft_constants.artifact_center_region_size,
+            fft_default_smoothing_kernel_size=config.frequency_features.fft_constants.default_smoothing_kernel_size,
+            fft_energy_band_start_multiplier=config.frequency_features.fft_constants.energy_band_start_multiplier,
+            fft_energy_band_end_multiplier=config.frequency_features.fft_constants.energy_band_end_multiplier,
+            fft_epsilon=config.frequency_features.fft_constants.epsilon,
+            dct_epsilon=config.frequency_features.dct_constants.epsilon
         )
         """Frequency feature extractor using FFT and DCT"""
 
-        self.concatenator: FaceFeaturesConcatenator = FaceFeaturesConcatenator(
-            spatial_feature_dim=self.config.concat_spatial_features_dim,
-            frequency_feature_dim=self.config.concat_frequency_features_dim
-        )
+        self.concatenator: FaceFeaturesConcatenator = FaceFeaturesConcatenator()
         """Concatenates spatial and frequency features"""
 
         self.classifier: FaceClassifier = FaceClassifier(

@@ -1,9 +1,13 @@
+"""
+DatasetSplitter module - handles train/test/eval splitting with video integrity.
+"""
+
 import random
 import logging
 from typing import List, Optional
 from collections import defaultdict
 
-from core.csv_schemas import FaceCSVItem, DatasetSplit
+from core.schemas import FaceCSVItem, DatasetSplit
 
 
 class DatasetSplitter:
@@ -18,7 +22,7 @@ class DatasetSplitter:
     This prevents data leakage between train/test/eval sets.
     """
 
-    def __init__(self, random_state: Optional[int]):
+    def __init__(self, random_state: Optional[int] = 42):
         """
         Initialize DatasetSplitter.
 
@@ -26,16 +30,17 @@ class DatasetSplitter:
             random_state: Random seed for reproducibility. None for no seeding.
         """
         self.random_state = random_state
-        self.logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
+        self.logger = logging.getLogger("DatasetSplitter")
 
         if random_state is not None:
             random.seed(random_state)
 
-    def split(self,
+    def split(
+        self,
         faces_data: List[FaceCSVItem],
-        train_ratio: float,
-        test_ratio: float,
-        eval_ratio: float
+        train_ratio: float = 0.7,
+        test_ratio: float = 0.15,
+        eval_ratio: float = 0.15
     ) -> DatasetSplit:
         """
         Split dataset into train/test/eval sets while keeping videos intact.
@@ -55,13 +60,12 @@ class DatasetSplitter:
         Raises:
             ValueError: If ratios don't sum to 1.0
         """
-        try:
-            total_ratio = train_ratio + test_ratio + eval_ratio
-            assert abs(total_ratio - 1.0) < 1e-6, f"Ratios must sum to 1.0, got {total_ratio:.6f}"
-            
-        except AssertionError as e:
-            self.logger.error(str(e))
-            raise ValueError(str(e))
+        # Validate ratios
+        total_ratio = train_ratio + test_ratio + eval_ratio
+        if not abs(total_ratio - 1.0) < 1e-6:
+            raise ValueError(
+                f"Ratios must sum to 1.0, got {total_ratio:.6f}"
+            )
 
         # Group by dataset and video to ensure no mixing
         dataset_video_groups = self._group_by_dataset_and_video(faces_data)
@@ -120,7 +124,10 @@ class DatasetSplitter:
 
         return split
 
-    def _group_by_dataset_and_video(self, faces_data: List[FaceCSVItem]) -> dict:
+    def _group_by_dataset_and_video(
+        self,
+        faces_data: List[FaceCSVItem]
+    ) -> dict:
         """
         Group face items by dataset and video path.
 
@@ -137,7 +144,8 @@ class DatasetSplitter:
 
         return dataset_video_groups
 
-    def _split_videos(self,
+    def _split_videos(
+        self,
         video_list: List[str],
         train_ratio: float,
         test_ratio: float

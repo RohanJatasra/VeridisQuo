@@ -7,7 +7,8 @@ import logging
 from typing import List, Optional
 from collections import defaultdict
 
-from core.csv_schemas import FaceCSVItem
+from core.schemas import FaceCSVItem
+
 
 class DatasetBalancer:
     """
@@ -21,10 +22,7 @@ class DatasetBalancer:
     across balanced/unbalanced portions.
     """
 
-    AVAILABLE_METHODS = ['undersample', 'oversample']
-    """Implemented balancing methods"""
-
-    def __init__(self, random_state: Optional[int]):
+    def __init__(self, random_state: Optional[int] = 42):
         """
         Initialize DatasetBalancer.
 
@@ -32,14 +30,15 @@ class DatasetBalancer:
             random_state: Random seed for reproducibility. None for no seeding.
         """
         self.random_state = random_state
-        self.logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
+        self.logger = logging.getLogger("DatasetBalancer")
 
         if random_state is not None:
             random.seed(random_state)
 
-    def balance(self,
+    def balance(
+        self,
         faces_data: List[FaceCSVItem],
-        method: str
+        method: str = 'undersample'
     ) -> List[FaceCSVItem]:
         """
         Balance the dataset to have equal number of FAKE and REAL samples.
@@ -54,12 +53,10 @@ class DatasetBalancer:
         Raises:
             ValueError: If method is not 'undersample' or 'oversample'
         """
-        try:
-            assert method in self.AVAILABLE_METHODS, f"Method must be one of {self.AVAILABLE_METHODS}, got '{method}'"
-        
-        except AssertionError as e:
-            self.logger.error(str(e))
-            raise ValueError(str(e))
+        if method not in ['undersample', 'oversample']:
+            raise ValueError(
+                f"Method must be 'undersample' or 'oversample', got '{method}'"
+            )
 
         # Group by label
         fake_items = [item for item in faces_data if item.Label == "FAKE"]
@@ -102,11 +99,14 @@ class DatasetBalancer:
         fake_final = sum(1 for x in balanced_data if x.Label == 'FAKE')
         real_final = sum(1 for x in balanced_data if x.Label == 'REAL')
 
-        self.logger.info(f"After balancing ({method}): FAKE={fake_final}, REAL={real_final}")
+        self.logger.info(
+            f"After balancing ({method}): FAKE={fake_final}, REAL={real_final}"
+        )
 
         return balanced_data
 
-    def _undersample(self,
+    def _undersample(
+        self,
         majority_items: List[FaceCSVItem],
         minority_items: List[FaceCSVItem],
         target_count: int
@@ -145,10 +145,8 @@ class DatasetBalancer:
             elif len(selected_items) < target_count:
                 remaining = target_count - len(selected_items)
                 selected_items.extend(random.sample(video_items, remaining))
-                self.logger.debug("Reached target count during undersampling with partial video")
                 break
             else:
-                self.logger.debug("Reached target count during undersampling") 
                 break
 
         return minority_items + selected_items

@@ -1,3 +1,7 @@
+"""
+DatasetBuilder module - orchestrates frame and face extraction.
+"""
+
 from __future__ import annotations
 
 import warnings
@@ -9,15 +13,40 @@ import logging
 from multiprocessing import cpu_count
 from typing import Tuple
 
-from utils import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit, PreprocessCSVItem, PreprocessingConfig, DataLoaderConfig
+from core.schemas import CSVItem, FrameCSVItem, FaceCSVItem, DatasetSplit, PreprocessCSVItem
 from dataset_builder.face_forensic import FaceForensicDataset
 from dataset_builder.frame_dataset_builder import FrameDatasetBuilder
 from dataset_builder.face_dataset_builder import FaceDatasetBuilder
 from dataset_builder.dataset_balancer import DatasetBalancer
 from dataset_builder.dataset_splitter import DatasetSplitter
+
+from config import (
+    FACES_DIR, FRAME_DIR, DATA_FOLDER, CSV_FOLDER,
+    TEST_FACES_DIR, TEST_FRAME_DIR, TEST_DATA_FOLDER, TEST_CSV_FOLDER,
+    PREPROCESSED_DATASET_DIR
+)
 from utils.csv_services import CSVService
 import shutil
 from pathlib import Path
+
+
+@dataclass
+class ProcessingConfig:
+    """Configuration for face detection and extraction."""
+
+    # Frame extraction
+    frames_per_second: int = 1
+
+    # Face detection
+    min_face_size: int = 40
+    confidence_threshold: float = 0.7
+    only_keep_top_face: bool = True
+
+    # Face extraction
+    face_target_size: Tuple[int, int] = (224, 224)
+    face_normalization: str = "zero_one"
+    face_padding: int = 20  # pixels to add around face bbox
+
 
 class DatasetBuilder:
     """
@@ -29,42 +58,74 @@ class DatasetBuilder:
     This class provides a simple, unified interface for the complete
     dataset preprocessing pipeline.
     """
-    
-    def __init__(self, config: DataLoaderConfig) -> None:
+
+    def __init__(
+        self,
+        mode: str = 'train',
+        num_workers: Optional[int] = None,
+        config: Optional[ProcessingConfig] = None,
+        device: str = "cpu"
+    ):
         """
         Initialize DatasetBuilder.
+
         Args:
-            config: PreprocessingConfig object with all necessary parameters
+            mode: Dataset mode - 'train' or 'test'
+            num_workers: Number of parallel workers. Defaults to CPU count.
+            config: Processing configuration. Defaults to ProcessingConfig().
+            device: Device to use for face detection (cpu or cuda)
+
         Raises:
             ValueError: If mode is not 'train' or 'test'
         """
-        self.logger: logging.Logger = logging.getLogger("/".join(__file__.split("/")[-2:]))
-        self.config: DataLoaderConfig = config
-        
-        if self.config.num_workers is None:
-            self.config.num_workers = cpu_count()
+        if mode not in ['train', 'test']:
+            raise ValueError(f"Mode must be 'train' or 'test', got '{mode}'")
+
+        self.mode = mode
+        self.num_workers = num_workers if num_workers is not None else cpu_count()
+        self.config = config or ProcessingConfig()
+        self.device = device
+
+        # Set directories based on mode
+        self._setup_directories()
 
         # Initialize dataset and logger
-        self.dataset = FaceForensicDataset(self.config.csv_folder)
+        self.dataset = FaceForensicDataset(self.csv_folder)
         self.videos_path: Dict[str, List[CSVItem]] = self.dataset.load_all_csvs()
+        self.logger = logging.getLogger(f"DatasetBuilder[{mode}]")
 
-        self.logger.info(f"Initialized DatasetBuilder with {self.config.num_workers} workers")
+        self.logger.info(
+            f"Initialized DatasetBuilder in {mode} mode with {self.num_workers} workers"
+        )
 
         # Initialize sub-builders (lazy initialization)
-        self._frame_builder: Optional[FrameDatasetBuilder] = None
-        self._face_builder: Optional[FaceDatasetBuilder] = None
-        
+        self._frame_builder = None
+        self._face_builder = None
+
+    def _setup_directories(self) -> None:
+        """Configure directory paths based on operating mode."""
+        if self.mode == 'train':
+            self.csv_folder = CSV_FOLDER
+            self.data_folder = DATA_FOLDER
+            self.frame_dir = FRAME_DIR
+            self.faces_dir = FACES_DIR
+        else:  # test mode
+            self.csv_folder = TEST_CSV_FOLDER
+            self.data_folder = TEST_DATA_FOLDER
+            self.frame_dir = TEST_FRAME_DIR
+            self.faces_dir = TEST_FACES_DIR
+
     @property
     def frame_builder(self) -> FrameDatasetBuilder:
         """Get or create FrameDatasetBuilder instance."""
         if self._frame_builder is None:
             self._frame_builder = FrameDatasetBuilder(
-                data_folder=self.config.data_folder,
-                frame_dir=self.config.frames_dir,
+                data_folder=self.data_folder,
+                frame_dir=self.frame_dir,
                 videos_path=self.videos_path,
-                num_workers=self.config.num_workers,
-                fps=self.config.preprocessing_config.frames_per_second,
-                device=self.config.device,
+                num_workers=self.num_workers,
+                fps=self.config.frames_per_second,
+                device=self.device,
                 batch_size=32,
                 num_save_threads=4
             )
@@ -75,16 +136,16 @@ class DatasetBuilder:
         """Get or create FaceDatasetBuilder instance."""
         if self._face_builder is None:
             self._face_builder = FaceDatasetBuilder(
-                frame_dir=self.config.frames_dir,
-                faces_dir=self.config.faces_dir,
-                num_workers=self.config.num_workers,
-                min_face_size=self.config.preprocessing_config.min_face_size,
-                confidence_threshold=self.config.preprocessing_config.confidence_threshold,
-                only_keep_top_face=self.config.preprocessing_config.only_keep_top_face,
-                face_target_size=self.config.preprocessing_config.face_target_size,
-                face_normalization=self.config.preprocessing_config.face_normalization,
-                face_padding=self.config.preprocessing_config.face_padding,
-                device=self.config.device
+                frame_dir=self.frame_dir,
+                faces_dir=self.faces_dir,
+                num_workers=self.num_workers,
+                min_face_size=self.config.min_face_size,
+                confidence_threshold=self.config.confidence_threshold,
+                only_keep_top_face=self.config.only_keep_top_face,
+                face_target_size=self.config.face_target_size,
+                face_normalization=self.config.face_normalization,
+                face_padding=self.config.face_padding,
+                device=self.device
             )
         return self._face_builder
 
@@ -110,16 +171,17 @@ class DatasetBuilder:
         """
         return self.face_builder.extract_faces()
 
-    def build_complete_dataset(self,
-        name: str,
-        balance: bool,
-        balance_method: str,
-        split: bool,
-        train_ratio: float,
-        test_ratio: float,
-        eval_ratio: float,
-        save_preprocessed: bool,
-        random_state: Optional[int]
+    def build_complete_dataset(
+        self,
+        name,
+        balance: bool = True,
+        balance_method: str = 'oversample',
+        split: bool = True,
+        train_ratio: float = 0.7,
+        test_ratio: float = 0.15,
+        eval_ratio: float = 0.15,
+        save_preprocessed: bool = True,
+        random_state: Optional[int] = 42
     ) -> Union[Tuple[List[FrameCSVItem], List[FaceCSVItem]], Tuple[List[FrameCSVItem], DatasetSplit]]:
         """
         Run the complete pipeline: extract frames, faces, balance, split, and save.
@@ -150,12 +212,12 @@ class DatasetBuilder:
         # Step 1: Extract frames
         self.logger.info("Step 1/5: Extracting frames from videos...")
         frames_data = self.extract_frame()
-        self.logger.info(f"Extracted {len(frames_data)} frames")
+        self.logger.info(f"✓ Extracted {len(frames_data)} frames")
 
         # Step 2: Extract faces
         self.logger.info("Step 2/5: Extracting faces from frames...")
         faces_data = self.extract_face()
-        self.logger.info(f"Extracted {len(faces_data)} faces")
+        self.logger.info(f"✓ Extracted {len(faces_data)} faces")
 
         # Step 3: Balance dataset (optional)
         if balance:
@@ -171,7 +233,7 @@ class DatasetBuilder:
             )
 
             faces_data = balancer.balance(faces_data, method=balance_method)
-            self.logger.info("Dataset balanced")
+            self.logger.info("✓ Dataset balanced")
         else:
             self.logger.info("Step 3/5: Skipping balancing (balance=False)")
 
@@ -189,29 +251,30 @@ class DatasetBuilder:
 
             # Validate split
             if splitter.validate_split(dataset_split, faces_data):
-                self.logger.info("Split validation passed")
+                self.logger.info("✓ Split validation passed")
             else:
-                self.logger.warning("Split validation failed!")
+                self.logger.warning("⚠ Split validation failed!")
 
             # Step 5: Save preprocessed dataset (optional)
             if save_preprocessed:
                 self.logger.info("Step 5/5: Saving preprocessed dataset...")
                 self.save_preprocessed_dataset(dataset_split, output_name=name)
-                self.logger.info("Preprocessed dataset saved")
+                self.logger.info("✓ Preprocessed dataset saved")
             else:
                 self.logger.info("Step 5/5: Skipping save (save_preprocessed=False)")
 
-            self.logger.info("Complete dataset build finished!")
+            self.logger.info("✓ Complete dataset build finished!")
             return frames_data, dataset_split
         else:
             self.logger.info("Step 4/5: Skipping split (split=False)")
             self.logger.info("Step 5/5: Skipping save (split=False)")
-            self.logger.info("Complete dataset build finished!")
+            self.logger.info("✓ Complete dataset build finished!")
             return frames_data, faces_data
 
-    def save_preprocessed_dataset(self,
+    def save_preprocessed_dataset(
+        self,
         dataset_split: DatasetSplit,
-        output_dir: str,
+        output_name : str,
     ) -> None:
         """
         Save the preprocessed dataset split to disk.
@@ -231,9 +294,13 @@ class DatasetBuilder:
         Args:
             dataset_split: DatasetSplit object containing train/test/eval splits
             output_dir: Output directory (default: PREPROCESSED_DATASET_DIR from config)
-        """    
+        """
+            
+        output_dir = PREPROCESSED_DATASET_DIR / output_name
+
         self.logger.info(f"Saving preprocessed dataset to {output_dir}...")
 
+        # Create base directory
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Create split directories (no images subdirectory)
@@ -262,7 +329,7 @@ class DatasetBuilder:
             for item in items:
                 # Reconstruct absolute path from relative path
                 # item.Face_Path is relative to faces_dir
-                source_path = Path(self.config.faces_dir) / item.Face_Path
+                source_path = Path(self.faces_dir) / item.Face_Path
                 if source_path.exists():
                     # Generate unique filename to handle duplicates
                     base_name = source_path.stem
@@ -304,12 +371,12 @@ class DatasetBuilder:
             metadata_path = output_dir / f"{split_name}.csv"
             CSVService.save_csv(str(metadata_path), updated_items, PreprocessCSVItem)
 
-            self.logger.info(f"Saved {split_name}: {len(updated_items)} images + {split_name}.csv")
+            self.logger.info(f"✓ Saved {split_name}: {len(updated_items)} images + {split_name}.csv")
 
         # Validate dataset integrity
         self._validate_dataset_integrity(output_dir)
 
-        self.logger.info(f"Preprocessed dataset saved to {output_dir}")
+        self.logger.info(f"✓ Preprocessed dataset saved to {output_dir}")
 
     def _validate_dataset_integrity(self, output_dir: Path) -> None:
         """
@@ -347,11 +414,17 @@ class DatasetBuilder:
 
             # Compare counts
             if csv_count == file_count:
-                self.logger.info(f"{split_name}: {csv_count} CSV entries = {file_count} files")
+                self.logger.info(
+                    f"✓ {split_name}: {csv_count} CSV entries = {file_count} files"
+                )
             else:
-                error_msg = (f"{split_name}: mismatch - {csv_count} CSV entries vs {file_count} files")
+                error_msg = (
+                    f"✗ {split_name}: mismatch - {csv_count} CSV entries vs {file_count} files"
+                )
                 self.logger.error(error_msg)
                 validation_errors.append(error_msg)
 
         if validation_errors:
-            raise ValueError(f"Dataset integrity validation failed:\n" + "\n".join(validation_errors))
+            raise ValueError(
+                f"Dataset integrity validation failed:\n" + "\n".join(validation_errors)
+            )
